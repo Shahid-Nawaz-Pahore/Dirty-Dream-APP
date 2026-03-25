@@ -7,7 +7,11 @@ import { MdKeyboardArrowDown, MdKeyboardArrowUp } from "react-icons/md";
 import { IoIosFlower } from "react-icons/io";
 import { IoInformationCircleOutline } from "react-icons/io5";
 import { PiLockKeyOpenFill } from "react-icons/pi";
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useTonConnectUI } from "@tonconnect/ui-react";
+import { TonClient, Address } from "ton";
+import { PiWalletFill } from "react-icons/pi";
+
 // import {
 //   AppKitButton,
 //   useAppKit,
@@ -21,7 +25,11 @@ const Home = () => {
   // const [display, setDisplay] = useState(false);
   // const [check, setCheck] = useState(false);
   const [swap, setSwap] = useState(false);
-
+  const [tonConnectUI] = useTonConnectUI();
+  const [balance, setBalance] = useState(null);
+  const [displayAddress, setDisplayAddress] = useState(null);
+  const [network, setNetwork] = useState("mainnet"); // ADDED THIS
+  const [showDisconnect, setShowDisconnect] = useState(false);
   // const { isConnected } = useAppKitAccount();
   // const { disconnect } = useDisconnect();
   // const { open } = useAppKit();
@@ -34,9 +42,164 @@ const Home = () => {
   //   }
   // };
 
+   const client = useMemo(() => {
+    try {
+      const endpoint = network === "testnet" 
+        ? "https://testnet.toncenter.com/api/v2/jsonRPC"
+        : "https://toncenter.com/api/v2/jsonRPC";
+      
+      return new TonClient({
+        endpoint: endpoint,
+        apiKey: import.meta.env.VITE_
+      });
+    } catch (e) {
+      console.error("Failed to initialize TonClient:", e);
+      return null;
+    }
+  }, [network]); 
+
+  useEffect(() => {
+    if (!client || !tonConnectUI) return;
+
+    const unsubscribe = tonConnectUI.onStatusChange(async (wallet) => {
+      if (!wallet) {
+        setBalance(null);
+        setDisplayAddress(null);
+        return;
+      }
+
+      try {
+        const rawAddress = wallet.account.address;
+        
+        // Detect testnet with proper priority
+        let isTestnet = false;
+        
+       
+        if (!rawAddress.includes(':')) {
+          if (rawAddress.startsWith('k') || (rawAddress.startsWith('0') && rawAddress.length > 10)) {
+            isTestnet = true;
+          }
+        }
+        
+        if (wallet.account.chain === "-3") {
+          isTestnet = true;
+        } else if (wallet.account.chain === "-239") {
+          isTestnet = false; 
+        }
+        
+        console.log("Raw address:", rawAddress);
+        console.log("Chain:", wallet.account.chain);
+        console.log("Detected as testnet:", isTestnet);
+        
+        setNetwork(isTestnet ? "testnet" : "mainnet");
+
+        let address;
+        try {
+          if (rawAddress.includes(':')) {
+            address = Address.parseRaw(rawAddress);
+          } else {
+            const parsed = Address.parseFriendly(rawAddress);
+            address = parsed.address;
+            
+            isTestnet = parsed.isTestOnly;
+            setNetwork(isTestnet ? "testnet" : "mainnet");
+            
+            console.log("Parsed isTestOnly:", parsed.isTestOnly);
+          }
+          
+          const friendlyAddress = address.toString({
+            bounceable: false,
+            testOnly: isTestnet
+          });
+          
+          setDisplayAddress(friendlyAddress);
+          
+        } catch (e) {
+          console.error("Failed to parse address:", e);
+          setBalance("Invalid Address");
+          return;
+        }
+
+        try {
+          console.log("Fetching balance for address:", address.toString());
+          const info = await client.getBalance(address);
+          console.log("Balance fetched successfully:", info);
+          setBalance((Number(info) / 1e9).toFixed(2));
+        } catch (balanceError) {
+          console.error("Error fetching balance from TonClient:", balanceError);
+          
+          try {
+            const apiEndpoint = network === "testnet"
+              ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
+              : "https://toncenter.com/api/v2/getAddressBalance";
+            
+            const response = await fetch(`${apiEndpoint}?address=${address.toString()}`);
+            const data = await response.json();
+            
+            if (data.ok && data.result) {
+              console.log("Balance fetched via fallback API:", data.result);
+              setBalance((Number(data.result) / 1e9).toFixed(2));
+            } else {
+              console.error("Fallback API error:", data);
+              setBalance("Error");
+            }
+          } catch (fallbackError) {
+            console.error("Fallback API also failed:", fallbackError);
+            setBalance("Error");
+          }
+        }
+      } catch (e) {
+        console.error("Error in wallet status change:", e);
+        setBalance("Error");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [tonConnectUI, client]);
+
+  const handleWalletConnect = async () => {
+    try {
+      if (tonConnectUI.connected) {
+        console.log("Wallet already connected");
+        return;
+      }
+
+      await tonConnectUI.openModal();
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+    }
+  };
+
+  const handleWalletDisconnect = async () => {
+    try {
+      await tonConnectUI.disconnect();
+      setShowDisconnect(false);
+      setBalance(null);
+      setDisplayAddress(null);
+      setNetwork("mainnet"); // ADDED THIS
+    } catch (error) {
+      console.error("Error disconnecting wallet:", error);
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showDisconnect && !event.target.closest(".wallet-dropdown")) {
+        setShowDisconnect(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showDisconnect]);
+
   return (
     <div className=" min-h-screen bg-gray-700">
+         <div className="pt-4 px-4">
+          <img src="/Logo.svg" alt="logo"  className="w-12 h-12 "/>
+        </div>
       <div className="flex justify-center items-center flex-col px-4 pb-6">
+     
         <div className="bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
           <button
             onClick={() => setSwap((prev) => !prev)}
@@ -364,12 +527,78 @@ const Home = () => {
           </div>
         </div>
 
-        <button
+        {/* <button
           // onClick={handleClick}
           className="flex items-center mt-6 md:mt-8 justify-center cursor-pointer bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] border-gray-200 border-2  transition-colors text-white w-full max-w-[19rem] md:max-w-[35rem] font-semibold text-md h-11 rounded-full"
         >
           Connect Wallet
-        </button>
+        </button> */}
+
+          <div className="flex  gap-2 items-center  border-2 h-12 justify-center items-center border-gray-600 rounded-lg  border-white mt-3 w-full max-w-[19rem] md:max-w-[35rem] h-10 px-3 cursor-pointer active:scale-95 transition">
+            <PiWalletFill className="text-white w-5 h-5" />
+
+            {!tonConnectUI.connected ? (
+              <button
+                onClick={handleWalletConnect}
+                className="text-white font-semibold text-sm"
+               >
+                Connect wallet
+              </button>
+            ) : (
+              <div className="relative wallet-dropdown">
+                <button
+                  onClick={() => setShowDisconnect(!showDisconnect)}
+                  className="text-white font-semibold text-sm font-mono flex items-center gap-1"
+                >
+                  {displayAddress
+                    ? `${displayAddress.slice(0, 4)}...${displayAddress.slice(-3)}`
+                    : tonConnectUI.wallet?.account?.address
+                    ? `${tonConnectUI.wallet.account.address.slice(0, 4)}...${tonConnectUI.wallet.account.address.slice(-3)}`
+                    : "Connected"}
+                  {network === "testnet" && (
+                    <span className="text-xs">🧪</span>
+                  )}
+                </button>
+
+                {showDisconnect && (
+                  <div className="absolute top-full right-0 mt-2 bg-[#0a1628] border border-gray-600 rounded-lg p-4 min-w-[200px] shadow-xl z-50">
+                    <div className="text-gray-400 text-xs mb-1">
+                      Wallet Address
+                    </div>
+                    <div className="text-white text-xs mb-2 font-mono break-all">
+                      {displayAddress || tonConnectUI.wallet?.account?.address || "N/A"}
+                    </div>
+
+                    {network === "testnet" && (
+                      <div className="mb-2 bg-yellow-500/20 border border-yellow-500/50 rounded px-2 py-1">
+                        <div className="text-yellow-400 text-xs font-semibold">
+                          🧪 Testnet
+                        </div>
+                      </div>
+                    )}
+
+                    {balance && (
+                      <div className="mb-3">
+                        <div className="text-gray-400 text-xs mb-1">
+                          Balance
+                        </div>
+                        <div className="text-white text-sm font-semibold">
+                          {balance} TON
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleWalletDisconnect}
+                      className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold text-xs px-3 py-2 rounded transition"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
         <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border-2 border-gray-200 flex flex-row justify-between items-center p-4">
           <div className="flex flex-row gap-2 items-center">
