@@ -9,7 +9,7 @@ import { IoInformationCircleOutline } from "react-icons/io5";
 import { PiLockKeyOpenFill } from "react-icons/pi";
 import { useState, useMemo, useEffect } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
-import { TonClient, Address } from "ton";
+import { TonClient, Address, beginCell, toNano } from "ton";
 import { PiWalletFill } from "react-icons/pi";
 
 // import {
@@ -28,8 +28,9 @@ const Home = () => {
   const [tonConnectUI] = useTonConnectUI();
   const [balance, setBalance] = useState(null);
   const [displayAddress, setDisplayAddress] = useState(null);
-  const [network, setNetwork] = useState("mainnet"); // ADDED THIS
+  const [network, setNetwork] = useState("testnet"); // ADDED THIS
   const [showDisconnect, setShowDisconnect] = useState(false);
+  const [input,setInput] = useState(0);
   // const { isConnected } = useAppKitAccount();
   // const { disconnect } = useDisconnect();
   // const { open } = useAppKit();
@@ -50,7 +51,7 @@ const Home = () => {
       
       return new TonClient({
         endpoint: endpoint,
-        apiKey: import.meta.env.VITE_
+        apiKey: import.meta.env.VITE_API_TON_CLIENT
       });
     } catch (e) {
       console.error("Failed to initialize TonClient:", e);
@@ -193,12 +194,107 @@ const Home = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showDisconnect]);
 
+  const handleStake = async () => {
+    if (!tonConnectUI.connected) return;
+
+    // op code for deposit = 0x47d54391 (KTON Pool Root)
+    const body = beginCell()
+      .storeUint(0x47d54391, 32) // op: deposit
+      .storeUint(0, 64)          // query_id
+      .endCell();
+
+    const transaction = {
+      validUntil: Math.floor(Date.now() / 1000) + 300, // 5 min
+      messages: [
+        {
+          address: "kQCFQZnRHcIUaLmsbbFNiYTbxzhEANCjppUmAUaSbUVszJKG", // testnet address you got
+          amount: toNano(input).toString(),        // TON amount in nanotons
+          payload: body.toBoc().toString("base64"),
+        },
+      ],
+    };
+
+    try {
+      await tonConnectUI.sendTransaction(transaction);
+      console.log("Stake tx sent!");
+    } catch (e) {
+      console.error("Stake failed:", e);
+    }
+  };
+
   return (
-    <div className=" min-h-screen bg-gray-700">
-         <div className="pt-4 px-4">
-          <img src="/Logo.svg" alt="logo"  className="w-12 h-12 "/>
+    <div className="min-h-screen bg-gray-700">
+         <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
+          <img src="/Logo.svg" alt="logo"  className="size-10 "/>
+          
+          <div className=" bg-blue-500 relative flex  gap-2 justify-center items-center rounded-lg  border-white border h-10 px-3 cursor-pointer active:scale-95 transition">
+            <PiWalletFill className="text-white w-5 h-5" />
+
+            {!tonConnectUI.connected ? (
+              <button
+                onClick={handleWalletConnect}
+                className="text-white font-semibold text-sm cursor-pointer"
+               >
+                Connect wallet
+              </button>
+            ) : (
+              <div className="wallet-dropdown">
+                <button
+                  onClick={() => setShowDisconnect(!showDisconnect)}
+                  className="text-white font-semibold text-sm font-mono flex items-center gap-1 cursor-pointer"
+                >
+                  {displayAddress
+                    ? `${displayAddress.slice(0, 4)}...${displayAddress.slice(-3)}`
+                    : tonConnectUI.wallet?.account?.address
+                    ? `${tonConnectUI.wallet.account.address.slice(0, 4)}...${tonConnectUI.wallet.account.address.slice(-3)}`
+                    : "Connected"}
+                  {network === "testnet" && (
+                    <span className="text-xs">🧪</span>
+                  )}
+                </button>
+
+                {showDisconnect && (
+                  <div className="absolute top-full right-0 mt-2 bg-[#0a1628] border border-gray-600 rounded-lg p-4 min-w-[200px] shadow-xl z-50">
+                    <div className="text-gray-400 text-xs mb-1">
+                      Wallet Address
+                    </div>
+                    <div className="text-white text-xs mb-2 font-mono break-all">
+                      {displayAddress || tonConnectUI.wallet?.account?.address || "N/A"}
+                    </div>
+
+                    {network === "testnet" && (
+                      <div className="mb-2 bg-yellow-500/20 border border-yellow-500/50 rounded px-2 py-1">
+                        <div className="text-yellow-400 text-xs font-semibold">
+                          🧪 Testnet
+                        </div>
+                      </div>
+                    )}
+
+                    {balance && (
+                      <div className="mb-3">
+                        <div className="text-gray-400 text-xs mb-1">
+                          Balance
+                        </div>
+                        <div className="text-white text-sm font-semibold">
+                          {balance} TON
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleWalletDisconnect}
+                      className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold text-xs px-3 py-2 rounded transition"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
         </div>
-      <div className="flex justify-center items-center flex-col px-4 pb-6">
+      <div className="flex justify-center items-center flex-col px-4 pb-6 pt-14">
      
         <div className="bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
           <button
@@ -208,7 +304,10 @@ const Home = () => {
             Stake
           </button>
           <button
-            onClick={() => setSwap((prev) => !prev)}
+            onClick={() => {
+              setSwap((prev) => !prev);
+              setInput(0)
+            }}
             className={`${swap ? "bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px]" : ""} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
           >
             Un stake
@@ -239,10 +338,21 @@ const Home = () => {
                     placeholder={`${swap ? "0" : "100"}`}
                     type="number"
                     className="text-2xl md:text-3xl font-bold bg-transparent border-none outline-none text-white w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={input}
+                    onChange={(e)=>setInput(e.target.value)}
                   />
                   <div className="flex flex-row justify-center items-center gap-1 md:gap-2 items-center flex-shrink-0">
                     <div className="flex justify-end items-end w-full mt-1">
-                      <button className="text-sm md:text-md font-semibold text-black bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] rounded-full px-4 py-1.5 cursor-pointer transition-colors">
+                      <button
+                        className="text-sm md:text-md font-semibold text-black bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] rounded-full px-4 py-1.5 cursor-pointer transition-colors"
+                        onClick={()=>{
+                          if(!swap){
+                            setInput(balance?.toString());
+                          }else{
+                            setInput(0)
+                          }
+                        }}
+                      >
                         Max
                       </button>
                     </div>
@@ -251,72 +361,6 @@ const Home = () => {
                     </h1>
                     <div className="flex items-center justify-center">
                       {swap ? (
-                        // <svg
-                        //   width="32"
-                        //   height="32"
-                        //   viewBox="0 0 40 40"
-                        //   className="md:w-10 md:h-10"
-                        //   fill="none"
-                        //   xmlns="http://www.w3.org/2000/svg"
-                        // >
-                        //   <g clipPath="url(#clip0_5041_13487)">
-                        //     <path
-                        //       d="M20 40C31.0714 40 40 31.0714 40 20C40 8.92857 31.0714 0 20 0C8.92857 0 0 8.92857 0 20C0 31.0714 8.92857 40 20 40Z"
-                        //       fill="#545CCB"
-                        //       fillOpacity="0.5"
-                        //     />
-                        //     <g clipPath="url(#clip1_5041_13487)">
-                        //       <path
-                        //         d="M20.0017 19.998L13.9652 31.6449L12.9473 31.0564L20.0017 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M6.91016 19.4102L20.0011 19.9987L6.91016 20.5872V19.4102Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.002 19.9984L29.5261 13.8125L30.1138 14.8318L20.002 19.9984Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.9998 19.9991L19.4121 8.64648H20.5875L19.9998 19.9991Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.0005 19.9984L9.88867 14.8318L10.4764 13.8125L20.0005 19.9984Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.002 19.998L30.1138 25.1646L29.5261 26.1839L20.002 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.9998 19.998L20.5875 31.3507H19.4121L19.9998 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.0005 19.998L10.4764 26.1839L9.88867 25.1646L20.0005 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M33.0929 21.2945L20.002 20.1175V19.8821L33.0929 18.7051V21.2945Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.8984 19.9411L25.426 8L27.6655 9.29473L20.1022 20.0589L19.8984 19.9411Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.8993 20.0589L12.3359 9.29473L14.5755 8L20.1028 19.9411L19.8993 20.0589Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.1022 19.9414L27.6655 30.7055L25.426 32.0003L19.8984 20.0591L20.1022 19.9414Z"
-                        //         fill="white"
-                        //       />
-                        //     </g>
-                        //   </g>
-                        // </svg>
                         <img src="/Logo.svg" className="w-22 rounded-full" />
                       ) : (
                         <svg
@@ -342,12 +386,6 @@ const Home = () => {
                     </div>
                   </div>
                 </div>
-
-                {/* <div className="flex justify-end items-end w-full mt-2">
-                  <button className="text-sm md:text-md font-semibold text-white bg-[#3B3B3E] hover:bg-[#37373a] rounded-full px-4 py-1.5 cursor-pointer transition-colors">
-                    Max
-                  </button>
-                </div> */}
               </div>
 
               <div className="w-full flex flex-row justify-center items-center gap-2">
@@ -400,72 +438,6 @@ const Home = () => {
                           </g>
                         </svg>
                       ) : (
-                        // <svg
-                        //   width="32"
-                        //   height="32"
-                        //   viewBox="0 0 40 40"
-                        //   className="md:w-10 md:h-10"
-                        //   fill="none"
-                        //   xmlns="http://www.w3.org/2000/svg"
-                        // >
-                        //   <g clipPath="url(#clip0_5041_13487)">
-                        //     <path
-                        //       d="M20 40C31.0714 40 40 31.0714 40 20C40 8.92857 31.0714 0 20 0C8.92857 0 0 8.92857 0 20C0 31.0714 8.92857 40 20 40Z"
-                        //       fill="#545CCB"
-                        //       fillOpacity="0.5"
-                        //     />
-                        //     <g clipPath="url(#clip1_5041_13487)">
-                        //       <path
-                        //         d="M20.0017 19.998L13.9652 31.6449L12.9473 31.0564L20.0017 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M6.91016 19.4102L20.0011 19.9987L6.91016 20.5872V19.4102Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.002 19.9984L29.5261 13.8125L30.1138 14.8318L20.002 19.9984Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.9998 19.9991L19.4121 8.64648H20.5875L19.9998 19.9991Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.0005 19.9984L9.88867 14.8318L10.4764 13.8125L20.0005 19.9984Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.002 19.998L30.1138 25.1646L29.5261 26.1839L20.002 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.9998 19.998L20.5875 31.3507H19.4121L19.9998 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.0005 19.998L10.4764 26.1839L9.88867 25.1646L20.0005 19.998Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M33.0929 21.2945L20.002 20.1175V19.8821L33.0929 18.7051V21.2945Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.8984 19.9411L25.426 8L27.6655 9.29473L20.1022 20.0589L19.8984 19.9411Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M19.8993 20.0589L12.3359 9.29473L14.5755 8L20.1028 19.9411L19.8993 20.0589Z"
-                        //         fill="white"
-                        //       />
-                        //       <path
-                        //         d="M20.1022 19.9414L27.6655 30.7055L25.426 32.0003L19.8984 20.0591L20.1022 19.9414Z"
-                        //         fill="white"
-                        //       />
-                        //     </g>
-                        //   </g>
-                        // </svg>
                         <img src="/Logo.svg" className="w-10 rounded-full" />
                       )}
                     </div>
@@ -482,6 +454,9 @@ const Home = () => {
                     <MdKeyboardArrowDown className="text-white cursor-pointer w-5 h-5" />
                   </div>
                 </div>
+
+                <button className="border border-white" onClick={() => handleStake()}>Stake</button>
+
               </div>
             </div>
           </div>
@@ -527,14 +502,7 @@ const Home = () => {
           </div>
         </div>
 
-        {/* <button
-          // onClick={handleClick}
-          className="flex items-center mt-6 md:mt-8 justify-center cursor-pointer bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] border-gray-200 border-2  transition-colors text-white w-full max-w-[19rem] md:max-w-[35rem] font-semibold text-md h-11 rounded-full"
-        >
-          Connect Wallet
-        </button> */}
-
-          <div className="flex  gap-2 items-center  border-2 h-12 justify-center items-center border-gray-600 rounded-lg  border-white mt-3 w-full max-w-[19rem] md:max-w-[35rem] h-10 px-3 cursor-pointer active:scale-95 transition">
+          {/* <div className="flex  gap-2 items-center  border-2 h-12 justify-center items-center border-gray-600 rounded-lg  border-white mt-3 w-full max-w-[19rem] md:max-w-[35rem] h-10 px-3 cursor-pointer active:scale-95 transition">
             <PiWalletFill className="text-white w-5 h-5" />
 
             {!tonConnectUI.connected ? (
@@ -598,7 +566,7 @@ const Home = () => {
                 )}
               </div>
             )}
-          </div>
+          </div> */}
 
         <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border-2 border-gray-200 flex flex-row justify-between items-center p-4">
           <div className="flex flex-row gap-2 items-center">
