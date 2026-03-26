@@ -11,6 +11,8 @@ import { useState, useMemo, useEffect } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import { TonClient, Address, beginCell, toNano } from "ton";
 import { PiWalletFill } from "react-icons/pi";
+import { MINTER_ADDRESS, POOL_ADDRESS } from "../config";
+import toast from "react-hot-toast";
 
 // import {
 //   AppKitButton,
@@ -27,10 +29,12 @@ const Home = () => {
   const [swap, setSwap] = useState(false);
   const [tonConnectUI] = useTonConnectUI();
   const [balance, setBalance] = useState(null);
+  const [ktonBalance,setKtonBalance] = useState(0);
   const [displayAddress, setDisplayAddress] = useState(null);
   const [network, setNetwork] = useState("testnet"); // ADDED THIS
   const [showDisconnect, setShowDisconnect] = useState(false);
   const [input,setInput] = useState(0);
+  const [txStatus,setTxStatus] = useState("idle");
   // const { isConnected } = useAppKitAccount();
   // const { disconnect } = useDisconnect();
   // const { open } = useAppKit();
@@ -149,6 +153,7 @@ const Home = () => {
             setBalance("Error");
           }
         }
+
       } catch (e) {
         console.error("Error in wallet status change:", e);
         setBalance("Error");
@@ -194,8 +199,140 @@ const Home = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showDisconnect]);
 
+  const getKtonBalance = async () => {
+    try {
+
+      console.log("KTON BALANCE FETCH CALLED");
+      console.log("Display Address : ",displayAddress);
+      console.log("Client : ",client);      
+
+      if (!displayAddress || !client) return;
+
+      // Step 1 — get minter address from pool
+      const minterAddr = MINTER_ADDRESS;
+      if (!minterAddr) throw new Error("Could not fetch minter address");
+
+      // Step 2 — get your personal KTON jetton wallet address
+      const userAddr = Address.parse(displayAddress);
+
+      const walletResult = await client.runMethod(
+        minterAddr,
+        "get_wallet_address",
+        [
+          {
+            type: "slice",
+            cell: beginCell().storeAddress(userAddr).endCell(),
+          },
+        ]
+      );
+
+      const ktonWalletAddr = walletResult.stack.readAddress();
+
+      // Step 3 — get balance from your jetton wallet
+      // get_wallet_data returns: balance, owner, minter, wallet_code
+      const dataResult = await client.runMethod(
+        ktonWalletAddr,
+        "get_wallet_data",
+        []
+      );
+
+      const ktonBalance = dataResult.stack.readBigNumber(); // in nano KTON
+      const formatted = (Number(ktonBalance) / 1e9).toFixed(4);
+
+      console.log("KTON Balance:", formatted);
+      setKtonBalance(formatted);
+    } catch (e) {
+      // Wallet doesn't exist yet = 0 balance (no txs yet)
+      console.log("KTON balance fetch failed (likely 0):", e.message);
+      setKtonBalance("0.0000");
+    }
+  };
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (client && displayAddress) {
+        await getKtonBalance();
+      }
+    };
+
+    fetchBalance();
+  }, [client, displayAddress]);
+
+  const handleUnstake = async () => {
+    if (!tonConnectUI.connected) throw Error("connect wallet first");
+    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
+
+    try {
+      setTxStatus("pending");
+
+      const minterAddr = Address.parse(MINTER_ADDRESS);
+      if (!minterAddr) throw new Error("Could not fetch minter address");
+
+      const userAddr = Address.parse(displayAddress);
+
+      const walletResult = await client.runMethod(
+        minterAddr,
+        "get_wallet_address",
+        [{ type: "slice", cell: beginCell().storeAddress(userAddr).endCell() }]
+      );
+      const ktonWalletAddr = walletResult.stack.readAddress();
+
+      const waitTillRoundEnd = false; // immediate withdrawal
+      const fillOrKill = false;       // fallback to round-end if immediate unavailable
+
+      // const customPayload = beginCell()
+      //   .storeBit(waitTillRoundEnd)   // bit 0
+      //   .storeBit(fillOrKill)         // bit 1
+      //   .endCell();
+
+      // const burnBody = beginCell()
+      //   .storeUint(0x595f07bc, 32)       // op: burn
+      //   .storeUint(0, 64)                 // query_id
+      //   .storeCoins(toNano(input))        // jetton amount
+      //   .storeAddress(userAddr)           // response_destination
+      //   .storeBit(1)                      // ✅ Maybe = 1 (custom_payload present)
+      //   .storeRef(customPayload)          // ✅ flags cell
+      //   .endCell();
+
+      // ✅ FIXED: Custom burn body matching sendBurnWithParams
+      const burnBody = beginCell()
+        .storeUint(0x595f07bc, 32)  // op: "hbnr" = 0x73626e72 (custom burn)
+        .storeUint(0,64)            // query_id
+        .storeCoins(toNano(input))   // jetton amount
+        .storeAddress(userAddr)      // response_destination
+        .storeBit(waitTillRoundEnd)  // ✅ Flag 0: wait_till_round_end (bit)
+        .storeBit(fillOrKill)        // ✅ Flag 1: fill_or_kill (bit)
+        .endCell();
+
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 300,
+        messages: [
+          {
+            address: ktonWalletAddr.toString({
+              bounceable: true,
+              testOnly: network === "testnet",
+            }),
+            amount: toNano("5").toString(),
+            payload: burnBody.toBoc().toString("base64"),
+          },
+        ],
+      });
+
+      setTxStatus("success");
+      console.log("✅ Unstake sent!");
+      return true;
+    } catch (e) {
+      console.error("❌ Unstake failed:", e);
+      setTxStatus("error");
+      throw e;
+    }
+  };
+
   const handleStake = async () => {
-    if (!tonConnectUI.connected) return;
+    if (!tonConnectUI.connected) return alert("Connect wallet first");
+    if (!input || Number(input) <= 0) return alert("Enter amount");
+
+    setTxStatus('pending');
 
     // op code for deposit = 0x47d54391 (KTON Pool Root)
     const body = beginCell()
@@ -207,7 +344,7 @@ const Home = () => {
       validUntil: Math.floor(Date.now() / 1000) + 300, // 5 min
       messages: [
         {
-          address: "kQCFQZnRHcIUaLmsbbFNiYTbxzhEANCjppUmAUaSbUVszJKG", // testnet address you got
+          address: POOL_ADDRESS, // testnet address you got
           amount: toNano(input).toString(),        // TON amount in nanotons
           payload: body.toBoc().toString("base64"),
         },
@@ -217,8 +354,10 @@ const Home = () => {
     try {
       await tonConnectUI.sendTransaction(transaction);
       console.log("Stake tx sent!");
+      setTxStatus('success');
     } catch (e) {
       console.error("Stake failed:", e);
+      setTxStatus('error');
     }
   };
 
@@ -281,6 +420,14 @@ const Home = () => {
                       </div>
                     )}
 
+                    {ktonBalance && (
+                      <div className="mb-3">
+                        <div className="text-white text-sm font-semibold">
+                          {ktonBalance} K-TON
+                        </div>
+                      </div>
+                    )}
+
                     <button
                       onClick={handleWalletDisconnect}
                       className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold text-xs px-3 py-2 rounded transition"
@@ -298,7 +445,10 @@ const Home = () => {
      
         <div className="bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
           <button
-            onClick={() => setSwap((prev) => !prev)}
+            onClick={() => {
+              setSwap((prev) => !prev);
+              setInput(0)
+            }}
             className={`${swap ? "" : "bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px]"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
           >
             Stake
@@ -320,7 +470,7 @@ const Home = () => {
               <div className="w-full">
                 <div className="flex justify-between w-full mb-2">
                   <h1 className="text-sm md:text-md text-white font-semibold">
-                    {swap ? "Receive" : "Stake amount"}
+                    {"Amount"}
                   </h1>
                   <div className="flex flex-row gap-1 items-center">
                     <BiWalletAlt className="text-white w-5 h-5 md:w-6 md:h-6" />
@@ -349,7 +499,7 @@ const Home = () => {
                           if(!swap){
                             setInput(balance?.toString());
                           }else{
-                            setInput(0)
+                            setInput(ktonBalance?.toString())
                           }
                         }}
                       >
@@ -402,7 +552,7 @@ const Home = () => {
               <div className="w-full">
                 <div className="flex justify-start items-start w-full mb-2">
                   <h1 className="text-sm md:text-md text-white font-semibold">
-                    {swap ? "Unstack amount" : "receive"}
+                    {"Receive"}
                   </h1>
                 </div>
 
@@ -455,7 +605,23 @@ const Home = () => {
                   </div>
                 </div>
 
-                <button className="border border-white" onClick={() => handleStake()}>Stake</button>
+                {tonConnectUI.connected && (
+                  <button
+                    onClick={swap ? () => toast.promise(handleUnstake(),{loading: 'Loading',success: (data) => `Unstaked Successfully!!!`,error: (err) => `${err.toString()}`,}) : handleStake}
+                    disabled={txStatus === "pending"}
+                    className="mt-4 w-full max-w-[19rem] md:max-w-[35rem]
+                              h-11 rounded-full font-semibold text-white
+                              bg-blue-500 hover:cursor-pointer
+                              disabled:opacity-50 disabled:cursor-not-allowed
+                              transition-all"
+                  >
+                    {txStatus === "pending"
+                      ? "⏳ Processing..."
+                      : swap
+                      ? "Unstake KTON"
+                      : "Stake TON"}
+                  </button>
+                )}
 
               </div>
             </div>
@@ -501,72 +667,6 @@ const Home = () => {
             </div>
           </div>
         </div>
-
-          {/* <div className="flex  gap-2 items-center  border-2 h-12 justify-center items-center border-gray-600 rounded-lg  border-white mt-3 w-full max-w-[19rem] md:max-w-[35rem] h-10 px-3 cursor-pointer active:scale-95 transition">
-            <PiWalletFill className="text-white w-5 h-5" />
-
-            {!tonConnectUI.connected ? (
-              <button
-                onClick={handleWalletConnect}
-                className="text-white font-semibold text-sm"
-               >
-                Connect wallet
-              </button>
-            ) : (
-              <div className="relative wallet-dropdown">
-                <button
-                  onClick={() => setShowDisconnect(!showDisconnect)}
-                  className="text-white font-semibold text-sm font-mono flex items-center gap-1"
-                >
-                  {displayAddress
-                    ? `${displayAddress.slice(0, 4)}...${displayAddress.slice(-3)}`
-                    : tonConnectUI.wallet?.account?.address
-                    ? `${tonConnectUI.wallet.account.address.slice(0, 4)}...${tonConnectUI.wallet.account.address.slice(-3)}`
-                    : "Connected"}
-                  {network === "testnet" && (
-                    <span className="text-xs">🧪</span>
-                  )}
-                </button>
-
-                {showDisconnect && (
-                  <div className="absolute top-full right-0 mt-2 bg-[#0a1628] border border-gray-600 rounded-lg p-4 min-w-[200px] shadow-xl z-50">
-                    <div className="text-gray-400 text-xs mb-1">
-                      Wallet Address
-                    </div>
-                    <div className="text-white text-xs mb-2 font-mono break-all">
-                      {displayAddress || tonConnectUI.wallet?.account?.address || "N/A"}
-                    </div>
-
-                    {network === "testnet" && (
-                      <div className="mb-2 bg-yellow-500/20 border border-yellow-500/50 rounded px-2 py-1">
-                        <div className="text-yellow-400 text-xs font-semibold">
-                          🧪 Testnet
-                        </div>
-                      </div>
-                    )}
-
-                    {balance && (
-                      <div className="mb-3">
-                        <div className="text-gray-400 text-xs mb-1">
-                          Balance
-                        </div>
-                        <div className="text-white text-sm font-semibold">
-                          {balance} TON
-                        </div>
-                      </div>
-                    )}
-
-                    <button
-                      onClick={handleWalletDisconnect}
-                      className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold text-xs px-3 py-2 rounded transition"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div> */}
 
         <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border-2 border-gray-200 flex flex-row justify-between items-center p-4">
           <div className="flex flex-row gap-2 items-center">
