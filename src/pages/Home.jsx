@@ -237,7 +237,7 @@ const Home = () => {
       );
 
       const ktonBalance = dataResult.stack.readBigNumber(); // in nano KTON
-      const formatted = (Number(ktonBalance) / 1e9).toFixed(4);
+      const formatted = (Number(ktonBalance) / 1e9);
 
       console.log("KTON Balance:", formatted);
       setKtonBalance(formatted);
@@ -304,6 +304,29 @@ const Home = () => {
         .storeBit(fillOrKill)        // ✅ Flag 1: fill_or_kill (bit)
         .endCell();
 
+      //   const poolAddr = Address.parse(POOL_ADDRESS); 
+
+      // const { stack } = await client.runMethod(
+      //   poolAddr,
+      //   "get_pool_full_data",
+      //   []
+      // );
+
+      // const state = stack.readNumber();
+      // const halted = stack.readBoolean();
+      // const totalBalance = stack.readBigNumber();
+      // const interestRate = stack.readNumber();
+      // const optimisticDepositWithdrawals = stack.readBoolean();
+      // const depositsOpen = stack.readBoolean();
+
+      // console.log({
+      //   state,
+      //   halted,
+      //   depositsOpen,
+      //   optimisticDepositWithdrawals,
+      //   totalBalance: Number(totalBalance) / 1e9,
+      // });
+
       await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
@@ -312,7 +335,7 @@ const Home = () => {
               bounceable: true,
               testOnly: network === "testnet",
             }),
-            amount: toNano("5").toString(),
+            amount: toNano("1").toString(),
             payload: burnBody.toBoc().toString("base64"),
           },
         ],
