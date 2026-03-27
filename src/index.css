@@ -1,1 +1,10 @@
 @import "tailwindcss";
+@layer utilities {
+  .textoutline-light {
+    text-shadow:
+      1px 1px 0 rgba(0, 0, 0, 1),
+      -1px 1px 0 rgba(0, 0, 0, 1),
+      1px -1px 0 rgba(0, 0, 0, 1),
+      -1px -1px 0 rgba(0, 0, 0, 1);
+  }
+}

@@ -1,10 +1,40 @@
-import React from "react";
+import React  from "react";
+import { useState , useEffect } from "react";
 import { Route, Routes } from "react-router";
 import Home from "./pages/Home.jsx";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
 import { Toaster } from "react-hot-toast";
+import Loader from "./Loader.jsx";
 
 const App = () => {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate app initialization (like API / wallet / config)
+    const initApp = async () => {
+      try {
+        // 👇 put your real logic here (optional)
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initApp();
+
+    
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) return <Loader />;
+
+  
   return (
     <TonConnectUIProvider manifestUrl="https://stakee-stake.vercel.app/tonconnect-manifest.json">
       <Toaster
