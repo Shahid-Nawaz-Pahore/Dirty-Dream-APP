@@ -389,13 +389,13 @@ const Home = () => {
          <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
           <img src="/Logo.svg" alt="logo"  className="size-10 "/>
           
-          <div className=" bg-blue-500 relative flex  gap-2 justify-center items-center rounded-lg  border-white border h-10 px-3 cursor-pointer active:scale-95 transition">
-            <PiWalletFill className="text-white w-5 h-5" />
+          <div className=" bg-blue-500 relative flex  gap-2 justify-center items-center rounded-lg  hover:scale-105 transform duration-500 border h-10 px-3 cursor-pointer active:scale-95 transition">
+            <PiWalletFill className="text-white w-6 h-6" />
 
             {!tonConnectUI.connected ? (
               <button
                 onClick={handleWalletConnect}
-                className="text-white font-semibold text-sm cursor-pointer"
+                className="text-white font-semibold text-md textoutline-light cursor-pointer"
                >
                 Connect wallet
               </button>
@@ -466,13 +466,13 @@ const Home = () => {
         </div>
       <div className="flex justify-center items-center flex-col px-4 pb-6 pt-14">
      
-        <div className="bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
+        <div className="bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px]  w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
           <button
             onClick={() => {
               setSwap((prev) => !prev);
               setInput(0)
             }}
-            className={`${swap ? "" : "bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px]"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
+            className={`${swap ? "" : "bg-[rgba(255,255,255,0.2)] textoutline-light backdrop-blur-[20px]"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
           >
             Stake
           </button>
@@ -481,18 +481,18 @@ const Home = () => {
               setSwap((prev) => !prev);
               setInput(0)
             }}
-            className={`${swap ? "bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px]" : ""} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
+            className={`${swap ? "bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px]" : ""} text-white textoutline-light font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
           >
             Un stake
           </button>
         </div>
 
-        <div className="border-wrapper mt-5 w-full max-w-[19rem] md:max-w-[35rem]">
+        <div className="border-wrapper w-full  rounded-2xl mt-6 border-2 hover:border-blue-400 border-gray-200 max-w-[19rem] md:max-w-[35rem]">
           <div className="border-rotating">
             <div className="flex flex-col gap-2 items-center justify-center bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] rounded-2xl content p-4">
               <div className="w-full">
                 <div className="flex justify-between w-full mb-2">
-                  <h1 className="text-sm md:text-md text-white font-semibold">
+                  <h1 className="text-sm md:text-md text-white font-semibold textoutline-light">
                     {"Amount"}
                   </h1>
                   <div className="flex flex-row gap-1 items-center">
@@ -500,7 +500,8 @@ const Home = () => {
                     <h1 className="text-white font-semibold text-sm md:text-base">
                       -
                     </h1>
-                    <h1 className="text-white font-semibold text-sm md:text-base">
+                    <h1 className="text-white font-semibold text-sm md:text-base textoutline-light
+                    ">
                       TON
                     </h1>
                   </div>
@@ -517,7 +518,7 @@ const Home = () => {
                   <div className="flex flex-row justify-center items-center gap-1 md:gap-2 items-center flex-shrink-0">
                     <div className="flex justify-end items-end w-full mt-1">
                       <button
-                        className="text-sm md:text-md font-semibold text-black bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] rounded-full px-4 py-1.5 cursor-pointer transition-colors"
+                        className="text-sm md:text-md font-semibold text-black hover:text-white bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] rounded-full px-4 py-1.5 cursor-pointer transition-colors"
                         onClick={()=>{
                           if(!swap){
                             setInput(balance?.toString());
@@ -529,7 +530,7 @@ const Home = () => {
                         Max
                       </button>
                     </div>
-                    <h1 className="text-2xl md:text-3xl text-white font-semibold">
+                    <h1 className="text-2xl md:text-3xl text-white font-semibold textoutline-light">
                       {swap ? "KTON" : "TON"}
                     </h1>
                     <div className="flex items-center justify-center">
@@ -563,7 +564,7 @@ const Home = () => {
 
               <div className="w-full flex flex-row justify-center items-center gap-2">
                 <div className="border-t-2 h-1 bg-white flex-1"></div>
-                <div className="w-10 h-10 hover:bg-white rounded-2xl flex justify-center items-center cursor-pointer transition-all">
+                <div className="w-10 h-10 hover:bg-white rounded-2xl bg-[#999EA7] flex justify-center items-center cursor-pointer transition-all">
                   <LuArrowDownUp
                     onClick={() => setSwap((prev) => !prev)}
                     className="w-5 h-5 text-black hover:rotate-180 transition-transform font-semibold"
@@ -574,7 +575,7 @@ const Home = () => {
 
               <div className="w-full">
                 <div className="flex justify-start items-start w-full mb-2">
-                  <h1 className="text-sm md:text-md text-white font-semibold">
+                  <h1 className="text-sm md:text-md text-white font-semibold textoutline-light">
                     {"Receive"}
                   </h1>
                 </div>
@@ -586,7 +587,8 @@ const Home = () => {
                     className="text-2xl md:text-3xl font-bold bg-transparent border-none outline-none text-white w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="flex flex-row gap-1 md:gap-2 items-center flex-shrink-0">
-                    <h1 className="text-2xl md:text-3xl text-white font-semibold">
+                    <h1 className="text-2xl md:text-3xl text-white font-semibold textoutline-light
+                    ">
                       {swap ? "TON" : "KTON"}
                     </h1>
                     <div className="flex items-center justify-center">
@@ -651,9 +653,9 @@ const Home = () => {
           </div>
         </div>
 
-        <div className="w-full max-w-[19rem] md:max-w-[35rem] bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] flex flex-col gap-3 rounded-2xl mt-6 border-2 border-gray-200 p-4">
+        <div className="w-full max-w-[19rem] md:max-w-[35rem] bg-[rgba(255,255,255,0.2)] backdrop-blur-[20px] flex flex-col gap-3 rounded-2xl mt-6 border-2 hover:border-blue-400 border-gray-200 p-4">
           <div className="flex justify-between items-start">
-            <h1 className="text-white font-semibold text-sm md:text-base">
+            <h1 className="text-white font-semibold text-sm md:text-base textoutline-light">
               Upcoming rewards
             </h1>
             <div className="flex flex-col items-end">
@@ -667,7 +669,7 @@ const Home = () => {
           </div>
 
           <div className="flex justify-between items-start">
-            <h1 className="text-white font-semibold text-sm md:text-base">
+            <h1 className="text-white font-semibold text-sm md:text-base textoutline-light">
               Monthly (Est.)
             </h1>
             <div className="flex flex-col items-end">
@@ -679,7 +681,7 @@ const Home = () => {
           </div>
 
           <div className="flex justify-between items-start">
-            <h1 className="text-white font-semibold text-sm md:text-base">
+            <h1 className="text-white font-semibold text-sm md:text-base textoutline-light">
               Yearly (Est.)
             </h1>
             <div className="flex flex-col items-end">
@@ -691,29 +693,29 @@ const Home = () => {
           </div>
         </div>
 
-        <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border-2 border-gray-200 flex flex-row justify-between items-center p-4">
+        <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border-2 border-gray-200 hover:border-blue-400 flex flex-row justify-between items-center p-4">
           <div className="flex flex-row gap-2 items-center">
             <IoIosFlower className="w-6 h-6 md:w-8 md:h-8 text-blue-600" />
-            <h1 className="text-white text-xl md:text-2xl">APY</h1>
+            <h1 className="text-white text-xl md:text-2xl textoutline-light">APY</h1>
             <IoInformationCircleOutline className="w-4 h-4 md:w-5 md:h-5 text-white" />
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white">3.69%</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-white textoutline-light">3.69%</h1>
         </div>
       
 
         <div className="flex justify-center flex-col gap-2 items-center w-full max-w-[19rem] md:max-w-[35rem] mt-6">
-          <div className="flex flex-col md:flex-row gap-2 items-center">
+          <div className="flex flex-col md:flex-row gap-2 items-center textoutline-light">
             <h1 className="text-white font-semibold">
               Audited by
             </h1>
             <PiLockKeyOpenFill className="w-6 h-6 md:w-8 md:h-8 text-white" />
-            <div className="text-white font-bold">
+            <div className="text-white font-bold textoutline-light">
               Ton{" "}
               <span className="text-white font-normal">
                 Bit
               </span>
             </div>
-            <h1 className="font-semibold text-white">
+            <h1 className="font-semibold text-white textoutline-light">
               TON Foundation-endorsed
             </h1>
           </div>
