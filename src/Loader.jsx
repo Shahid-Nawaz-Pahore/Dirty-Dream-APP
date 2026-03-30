@@ -1,6 +1,6 @@
 const Loader = () => {
   return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md z-50">
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#020510] backdrop-blur-md z-50">
       <div
         className="flex flex-col items-center gap-6 px-8 py-6 rounded-2xl 
         bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl"
