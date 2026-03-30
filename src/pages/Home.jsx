@@ -530,7 +530,7 @@ const Home = () => {
     <div className="min-h-screen">
       <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
         <img
-          onClick={() => window.open("https://stakee-v2.vercel.app/", "_blank")}
+          onClick={() => window.open("https://dirty-dream.vercel.app/", "_blank")}
           src="/Logo.svg"
           alt="logo"
           className="size-10 rotate-0 hover:rotate-360 transform duration-500"
@@ -1018,7 +1018,7 @@ const Home = () => {
             <IoInformationCircleOutline className="w-4 h-4 md:w-5 md:h-5 text-violet-300" />
           </div>
           <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
-            3.69%
+            5.31%
           </h1>
         </div>
 
