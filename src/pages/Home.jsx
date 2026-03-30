@@ -533,7 +533,7 @@ const Home = () => {
           onClick={() => window.open("https://dirty-dream.vercel.app/", "_blank")}
           src="/Logo.svg"
           alt="logo"
-          className="size-10 rotate-0 hover:rotate-360 transform duration-500"
+          className="size-10 rotate-0 hover:rotate-360 transform duration-500 cursor-pointer"
         />
 
         <div className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition">
@@ -783,7 +783,7 @@ const Home = () => {
               setSwap((prev) => !prev);
               setInput(0);
             }}
-            className={`${!swap ? "bg-gradient-to-r from-violet-600/60 to-blue-500/60 backdrop-blur-[20px] shadow-lg shadow-violet-500/20" : ""} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
+            className={`${!swap ? "bg-gradient-to-r from-violet-600/60 to-blue-500/60 backdrop-blur-[20px] shadow-lg shadow-violet-500/20" : "bg-white/5"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all pointer-events-auto`}
           >
             Stake
           </button>
@@ -792,7 +792,7 @@ const Home = () => {
               setSwap((prev) => !prev);
               setInput(0);
             }}
-            className={`${swap ? "bg-gradient-to-r from-pink-600/60 to-violet-500/60 backdrop-blur-[20px] shadow-lg shadow-pink-500/20" : ""} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all`}
+            className={`${swap ? "bg-gradient-to-r from-pink-600/60 to-violet-500/60 backdrop-blur-[20px] shadow-lg shadow-pink-500/20" : "bg-white/5"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all pointer-events-auto`}
           >
             UnStake
           </button>
