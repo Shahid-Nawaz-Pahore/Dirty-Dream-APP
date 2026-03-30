@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 
 import { BiWalletAlt } from "react-icons/bi";
 import { LuArrowDownUp } from "react-icons/lu";
@@ -265,8 +265,8 @@ const Home = () => {
 
   const handleUnstake = async () => {
     if (!tonConnectUI.connected) throw Error("connect wallet first");
-    if (!input || Number(input) <= 0)
-      throw Error("amount must be greater than 0");
+    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
+    if (parseFloat(input) > ktonBalance) throw Error(`amount must be less than ${ktonBalance}`);
 
     try {
       setTxStatus("pending");
@@ -353,13 +353,16 @@ const Home = () => {
     } catch (e) {
       console.error("❌ Unstake failed:", e);
       setTxStatus("error");
-      throw e;
+      throw Error(e.stack.split(':')[1].split('\n')[0]);
     }
   };
 
   const handleStake = async () => {
-    if (!tonConnectUI.connected) return alert("Connect wallet first");
-    if (!input || Number(input) <= 0) return alert("Enter amount");
+    if (!tonConnectUI.connected) throw Error("connect wallet first");
+    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
+    console.log("Balance : ",balance);
+    
+    if (parseFloat(input) > balance) throw Error(`amount must be less than ${balance}`);
 
     setTxStatus("pending");
 
@@ -374,7 +377,7 @@ const Home = () => {
       messages: [
         {
           address: POOL_ADDRESS, // testnet address you got
-          amount: toNano(input).toString(), // TON amount in nanotons
+          amount: (toNano(input) + toNano("1")).toString(), // TON amount in nanotons
           payload: body.toBoc().toString("base64"),
         },
       ],
@@ -384,11 +387,97 @@ const Home = () => {
       await tonConnectUI.sendTransaction(transaction);
       console.log("Stake tx sent!");
       setTxStatus("success");
+      return true;
     } catch (e) {
-      console.error("Stake failed:", e);
+      console.log("Stake failed:", e.stack.split(':')[1].split('\n')[0]);
       setTxStatus("error");
+      throw Error(e.stack.split(':')[1].split('\n')[0]);
     }
   };
+
+  const [exchangeRate, setExchangeRate] = useState(null); // TON per KTON ratio
+  const exchangeRef = useRef(false);
+
+  const getExchangeRate = async () => {
+  try {
+
+    if(exchangeRef.current == true) return;
+
+    exchangeRef.current = true;
+
+    const endpoint = network === "testnet"
+      ? "https://testnet.toncenter.com/api/v2"
+      : "https://toncenter.com/api/v2";
+
+    // ✅ Get total_balance from pool AND total_supply from minter
+    // in parallel using simple REST — no tuple parsing needed
+    const [poolRes, minterRes] = await Promise.all([
+      fetch(`${endpoint}/runGetMethod`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: POOL_ADDRESS,
+          method: "get_pool_full_data",
+          stack: [],
+        }),
+      }),
+      fetch(`${endpoint}/runGetMethod`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: MINTER_ADDRESS,
+          method: "get_jetton_data",
+          stack: [],
+        }),
+      }),
+    ]);
+
+    const poolData = await poolRes.json();
+    const minterData = await minterRes.json();
+
+    console.log("Pool stack:", poolData.result.stack);
+    console.log("Minter stack:", minterData.result.stack);
+
+    // pool stack[0] = state (num)
+    // pool stack[1] = halted (num)  
+    // pool stack[2] = total_balance (num) ✅
+    const totalBalance = BigInt(poolData.result.stack[2][1]);
+
+    // minter stack[0] = total_supply ✅
+    const totalSupply = BigInt(minterData.result.stack[0][1]);
+
+    console.log("Total TON in pool:", Number(totalBalance) / 1e9);
+    console.log("Total KTON supply:", Number(totalSupply) / 1e9);
+
+    if (totalSupply === 0n) throw new Error("Total supply is 0");
+
+    const rate = Number(totalBalance) / Number(totalSupply);
+    console.log("✅ Exchange rate (TON per KTON):", rate);
+    setExchangeRate(rate);
+    return rate;
+  } catch (e) {
+    console.error("Failed to fetch exchange rate:", e);
+    return null;
+  }
+};
+
+  useEffect(() => {
+    if (client && exchangeRate == null) {
+      getExchangeRate();
+    }
+  }, [client,exchangeRate]);
+
+  const receiveAmount = useMemo(() => {
+    if (!input || Number(input) <= 0 || !exchangeRate) return "0";
+
+    if (swap) {
+      // Unstaking: input is KTON → receive TON
+      return (Number(input) * exchangeRate).toFixed(2);
+    } else {
+      // Staking: input is TON → receive KTON
+      return (Number(input) / exchangeRate).toFixed(2);
+    }
+  }, [input, swap, exchangeRate]);
 
   return (
     <div className="min-h-screen">
@@ -755,6 +844,8 @@ const Home = () => {
                   <input
                     placeholder={`${swap ? "100" : "0"}`}
                     type="number"
+                    value={receiveAmount}
+                    readOnly
                     className="text-2xl md:text-3xl font-bold bg-transparent border-none outline-none text-white w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <div className="flex flex-row gap-1 md:gap-2 items-center flex-shrink-0">
@@ -791,7 +882,10 @@ const Home = () => {
 
                 <div className="flex justify-between w-full mt-4 text-xs md:text-sm">
                   <h1 className="text-violet-200 font-semibold">
-                    1TON = 0.999365 KTON
+                    {exchangeRate
+                      ? `1 TON = ${(1 / exchangeRate).toFixed(6)} KTON`
+                      : "Fetching rate..."
+                    }
                   </h1>
                   <div className="flex flex-row gap-1 items-center">
                     <FaGasPump className="text-cyan-400 w-3 h-3 md:w-4 md:h-4" />
@@ -810,7 +904,12 @@ const Home = () => {
                               success: () => `Unstaked Successfully!!!`,
                               error: (err) => `${err.toString()}`,
                             })
-                        : handleStake
+                        : () =>
+                            toast.promise(handleStake(), {
+                              loading: "Loading",
+                              success: () => `Staked Successfully!!!`,
+                              error: (err) => `${err.toString()}`,
+                            })
                     }
                     disabled={txStatus === "pending"}
                     className="mt-4 w-full max-w-[19rem] md:max-w-[35rem] h-11 rounded-full font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-500 hover:from-violet-500 hover:to-blue-400 hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-violet-500/25"
