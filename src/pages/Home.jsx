@@ -530,7 +530,7 @@ const Home = () => {
     <div className="min-h-screen">
       <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
         <img
-          onClick={() => window.open("https://dirty-dream.vercel.app/", "_blank")}
+          onClick={() => window.open("https://stakee-v2.vercel.app/", "_blank")}
           src="/Logo.svg"
           alt="logo"
           className="size-10 rotate-0 hover:rotate-360 transform duration-500"
