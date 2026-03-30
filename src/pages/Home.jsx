@@ -253,6 +253,45 @@ const Home = () => {
     }
   };
 
+  const getTonBalance = async () => {
+
+    if (!displayAddress || !client) return;
+
+    const address = Address.parse(displayAddress);
+
+    try {
+          console.log("Fetching balance for address:", address.toString());
+          const info = await client.getBalance(address);
+          console.log("Balance fetched successfully:", info);
+          setBalance((Number(info) / 1e9).toFixed(2));
+        } catch (balanceError) {
+          console.error("Error fetching balance from TonClient:", balanceError);
+
+          try {
+            const apiEndpoint =
+              network === "testnet"
+                ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
+                : "https://toncenter.com/api/v2/getAddressBalance";
+
+            const response = await fetch(
+              `${apiEndpoint}?address=${address.toString()}`,
+            );
+            const data = await response.json();
+
+            if (data.ok && data.result) {
+              console.log("Balance fetched via fallback API:", data.result);
+              setBalance((Number(data.result) / 1e9).toFixed(2));
+            } else {
+              console.error("Fallback API error:", data);
+              setBalance("Error");
+            }
+          } catch (fallbackError) {
+            console.error("Fallback API also failed:", fallbackError);
+            setBalance("Error");
+          }
+  };
+  }
+
   useEffect(() => {
     const fetchBalance = async () => {
       if (client && displayAddress) {
@@ -349,6 +388,10 @@ const Home = () => {
 
       setTxStatus("success");
       console.log("✅ Unstake sent!");
+      setTimeout(()=>{
+        getKtonBalance()
+        getTonBalance()
+      },1000);
       return true;
     } catch (e) {
       console.error("❌ Unstake failed:", e);
@@ -387,6 +430,10 @@ const Home = () => {
       await tonConnectUI.sendTransaction(transaction);
       console.log("Stake tx sent!");
       setTxStatus("success");
+      setTimeout(()=>{
+        getKtonBalance()
+        getTonBalance()
+      },1000);
       return true;
     } catch (e) {
       console.log("Stake failed:", e.stack.split(':')[1].split('\n')[0]);
