@@ -99,7 +99,7 @@ const App = () => {
   if (loading) return <Loader />;
 
   return (
-    <TonConnectUIProvider manifestUrl="https://stakee-stake.vercel.app/tonconnect-manifest.json">
+    <TonConnectUIProvider manifestUrl="https://dirty-dreamapp.vercel.app/tonconnect-manifest.json">
       <div
         style={{
           position: "relative",
