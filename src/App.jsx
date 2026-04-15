@@ -124,7 +124,7 @@ const App = () => {
       manifestUrl="https://staking-app-lovat.vercel.app/tonconnect-manifest.json"
       actionsConfiguration={{
         returnStrategy: "back",
-        twaReturnUrl: "https://stakee-stake.vercel.app",
+        twaReturnUrl: "https://staking-app-lovat.vercel.app",
       }}
     >
       <div
