@@ -97,13 +97,17 @@ const App = () => {
     return () => clearTimeout(timer);
   }, []);
 
+   useEffect(() => {
+    if (!loading) {
+      ReactGA.send({ hitType: 'pageview', page: location.pathname });
+    }
+  }, [location, loading]);
+
   if (loading) return <Loader />;
 
   
 
-  useEffect(() => {
-    ReactGA.send({ hitType: 'pageview', page: location.pathname });
-  }, [location]);
+
 
   return (
     <TonConnectUIProvider
