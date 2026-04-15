@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Route, Routes } from "react-router";
+import { Route, Routes, useLocation } from "react-router-dom";
 import Home from "./pages/Home.jsx";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
 import { Toaster } from "react-hot-toast";
 import Loader from "./Loader.jsx";
 import ReactGA from "react-ga4";
-import { useLocation } from "react-router";
+
+/* -------------------- DOT CANVAS -------------------- */
 function DotCanvas() {
   const ref = useRef(null);
 
@@ -18,6 +19,7 @@ function DotCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
+
     resize();
     window.addEventListener("resize", resize);
 
@@ -39,10 +41,12 @@ function DotCanvas() {
 
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       for (let i = 0; i < dots.length; i++) {
         const a = dots[i];
         a.x += a.vx;
         a.y += a.vy;
+
         if (a.x < 0 || a.x > canvas.width) a.vx *= -1;
         if (a.y < 0 || a.y > canvas.height) a.vy *= -1;
 
@@ -54,6 +58,7 @@ function DotCanvas() {
         for (let j = i + 1; j < dots.length; j++) {
           const b = dots[j];
           const dist = Math.hypot(a.x - b.x, a.y - b.y);
+
           if (dist < 120) {
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
@@ -64,8 +69,10 @@ function DotCanvas() {
           }
         }
       }
+
       raf = requestAnimationFrame(draw);
     };
+
     draw();
 
     return () => {
@@ -89,25 +96,28 @@ function DotCanvas() {
   );
 }
 
+/* -------------------- APP -------------------- */
 const App = () => {
   const [loading, setLoading] = useState(true);
   const location = useLocation();
+
+  /* fake loading screen */
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 3000);
     return () => clearTimeout(timer);
   }, []);
 
-   useEffect(() => {
-    if (!loading) {
-      ReactGA.send({ hitType: 'pageview', page: location.pathname });
-    }
+  /* GA PAGE TRACKING */
+  useEffect(() => {
+    if (loading) return;
+
+    ReactGA.send({
+      hitType: "pageview",
+      page: location.pathname + location.search,
+    });
   }, [location, loading]);
 
   if (loading) return <Loader />;
-
-  
-
-
 
   return (
     <TonConnectUIProvider
@@ -124,74 +134,13 @@ const App = () => {
           background: "#020510",
         }}
       >
-        <div
-          style={{
-            position: "fixed",
-            width: 700,
-            height: 600,
-            top: -220,
-            left: -160,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(ellipse, rgba(99,0,255,0.45) 0%, rgba(59,130,246,0.2) 40%, transparent 70%)",
-            filter: "blur(80px)",
-            animation: "f1 20s ease-in-out infinite",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
+        {/* Background blobs */}
+        <div style={{ position: "fixed", width: 700, height: 600, top: -220, left: -160, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(99,0,255,0.45) 0%, rgba(59,130,246,0.2) 40%, transparent 70%)", filter: "blur(80px)", zIndex: 0 }} />
+        <div style={{ position: "fixed", width: 550, height: 450, top: "20%", right: -160, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(236,72,153,0.4) 0%, rgba(168,85,247,0.2) 40%, transparent 70%)", filter: "blur(80px)", zIndex: 0 }} />
+        <div style={{ position: "fixed", width: 500, height: 380, bottom: -100, left: "20%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(6,182,212,0.35) 0%, rgba(59,130,246,0.15) 40%, transparent 70%)", filter: "blur(90px)", zIndex: 0 }} />
+        <div style={{ position: "fixed", width: 300, height: 280, top: "50%", left: "40%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(251,146,60,0.18) 0%, transparent 70%)", filter: "blur(70px)", zIndex: 0 }} />
 
-        <div
-          style={{
-            position: "fixed",
-            width: 550,
-            height: 450,
-            top: "20%",
-            right: -160,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(ellipse, rgba(236,72,153,0.4) 0%, rgba(168,85,247,0.2) 40%, transparent 70%)",
-            filter: "blur(80px)",
-            animation: "f2 24s ease-in-out infinite",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          style={{
-            position: "fixed",
-            width: 500,
-            height: 380,
-            bottom: -100,
-            left: "20%",
-            borderRadius: "50%",
-            background:
-              "radial-gradient(ellipse, rgba(6,182,212,0.35) 0%, rgba(59,130,246,0.15) 40%, transparent 70%)",
-            filter: "blur(90px)",
-            animation: "f1 28s ease-in-out infinite reverse",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          style={{
-            position: "fixed",
-            width: 300,
-            height: 280,
-            top: "50%",
-            left: "40%",
-            borderRadius: "50%",
-            background:
-              "radial-gradient(ellipse, rgba(251,146,60,0.18) 0%, transparent 70%)",
-            filter: "blur(70px)",
-            animation: "f2 16s ease-in-out infinite",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-
+        {/* animations */}
         <style>{`
           @keyframes f1 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(50px,-40px) scale(1.05)} }
           @keyframes f2 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-40px,30px) scale(0.95)} }
@@ -216,6 +165,7 @@ const App = () => {
               },
             }}
           />
+
           <Routes>
             <Route path="/" element={<Home />} />
           </Routes>
