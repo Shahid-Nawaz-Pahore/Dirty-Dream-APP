@@ -16,7 +16,6 @@ import toast from "react-hot-toast";
 import { useNavigate } from "react-router";
 import ReactGA from "react-ga4";
 
-ReactGA.initialize("G-3QSS9C0XPP");
 // import {
 //   AppKitButton,
 //   useAppKit,
@@ -331,6 +330,11 @@ const Home = () => {
           },
         ],
       });
+      ReactGA.event("unstake_transaction_success", {
+        // 👈 add this
+        user_address: displayAddress || "unknown",
+        amount: input,
+      });
       tonConnectUI.closeModal(); //also cloz here
       setTxStatus("success");
       console.log("✅ Unstake done!");
@@ -352,7 +356,7 @@ const Home = () => {
     // op code for deposit = 0x47d54391 (KTON Pool Root)
     const body = beginCell()
       .storeUint(0x47d54391, 32) // op: deposit
-      .storeUint(0, 64) // query_id  
+      .storeUint(0, 64) // query_id
       .endCell();
 
     const transaction = {
@@ -368,25 +372,30 @@ const Home = () => {
 
     try {
       const result = await tonConnectUI.sendTransaction(transaction);
+      ReactGA.event("stake_transaction_success", {
+        // 👈 add this
+        user_address: displayAddress || "unknown",
+        amount: input,
+      });
       await new Promise((resolve) => {
-        setTimeout(resolve, 1000)
-      })
+        setTimeout(resolve, 1000);
+      });
       console.log("Stake tx sent!");
       setTxStatus("success");
       setInput(0); //reset to zero amount
       tonConnectUI.closeModal(); // going too clooz the modal
     } catch (e) {
-  console.error("Stake cancelled:", e);
-  setTxStatus("error");
+      console.error("Stake cancelled:", e);
+      setTxStatus("error");
 
-  // small delay
-  await new Promise(resolve => setTimeout(resolve, 500));
+      // small delay
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-  // 🔥 force UI reset
-  tonConnectUI.disconnect();
+      // 🔥 force UI reset
+      tonConnectUI.disconnect();
 
-  throw e;
-}
+      throw e;
+    }
   };
 
   return (
@@ -399,17 +408,23 @@ const Home = () => {
           className="size-10 rotate-0 hover:rotate-360 transform duration-500"
         />
 
-        <div onClick={handleWalletConnect} className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition">
+        <div
+          onClick={handleWalletConnect}
+          className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition"
+        >
           <PiWalletFill className="text-white w-6 h-6" />
 
           {!tonConnectUI.connected ? (
             <button
-            onClick={() => {
-    window.gtag("wallet_connect_click", {
-      category: "Wallet",
-      label: "Connect Button Clicked",
-    });
-  }}
+              onClick={() => {
+                ReactGA.event("wallet_connect_clicked", {
+                  wallet_action: "Connect click",
+                  button_name: "connect_wallet",
+                  location: "header",
+                });
+
+                handleWalletConnect();
+              }}
               // onClick={handleWalletConnect}
               className="text-white font-semibold text-md cursor-pointer"
             >
@@ -599,17 +614,15 @@ const Home = () => {
                     />
 
                     <button
-
-                       onClick={() => {
+                      onClick={() => {
                         ReactGA.event("wallet_Disconnect_clicked", {
                           wallet_action: "DisConnect click",
                           button_name: "Disconnect_wallet",
                           location: "header",
                         });
 
-                        handleWalletDisconnect();                    
-                        }}
-
+                        handleWalletDisconnect();
+                      }}
                       className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200"
                       style={{
                         background: "rgba(239,68,68,0.1)",
@@ -659,11 +672,11 @@ const Home = () => {
         <div className="bg-white/5 backdrop-blur-[20px] border border-violet-500/20 w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
           <button
             onClick={() => {
-              ReactGA.event("Stake_Click",{
-                    wallet_action: "StakeClicked",
-                    button_name: "Stake",
-                    location: "header"
-              })
+              ReactGA.event("stake_clicked", {
+                wallet_action: "StakeClicked",
+                button_name: "Stake",
+                user_address: displayAddress || "unknown", // 👈 add this
+              });
               setSwap((prev) => !prev);
               setInput(0);
             }}
@@ -671,14 +684,14 @@ const Home = () => {
           >
             Stake
           </button>
-          //stake button
+
           <button
             onClick={() => {
-              ReactGA.event("UnStake_Clicked",{
-                    wallet_action: "UnStakeClicked",
-                    button_name: "UnStake",
-                    location: "header"
-              })
+              ReactGA.event("unstake_clicked", {
+                wallet_action: "UnStakeClicked",
+                button_name: "UnStake",
+                user_address: displayAddress || "unknown", // 👈 add this
+              });
               setSwap((prev) => !prev);
               setInput(0);
             }}

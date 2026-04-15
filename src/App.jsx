@@ -4,7 +4,8 @@ import Home from "./pages/Home.jsx";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
 import { Toaster } from "react-hot-toast";
 import Loader from "./Loader.jsx";
-
+import ReactGA from "react-ga4";
+import { useLocation } from "react-router";
 function DotCanvas() {
   const ref = useRef(null);
 
@@ -90,13 +91,19 @@ function DotCanvas() {
 
 const App = () => {
   const [loading, setLoading] = useState(true);
-
+  const location = useLocation();
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 3000);
     return () => clearTimeout(timer);
   }, []);
 
   if (loading) return <Loader />;
+
+  
+
+  useEffect(() => {
+    ReactGA.send({ hitType: 'pageview', page: location.pathname });
+  }, [location]);
 
   return (
     <TonConnectUIProvider
