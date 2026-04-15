@@ -121,7 +121,7 @@ const App = () => {
 
   return (
     <TonConnectUIProvider
-      manifestUrl="https://stakee-stake.vercel.app/tonconnect-manifest.json"
+      manifestUrl="https://staking-app-lovat.vercel.app/tonconnect-manifest.json"
       actionsConfiguration={{
         returnStrategy: "back",
         twaReturnUrl: "https://stakee-stake.vercel.app",
@@ -135,10 +135,62 @@ const App = () => {
         }}
       >
         {/* Background blobs */}
-        <div style={{ position: "fixed", width: 700, height: 600, top: -220, left: -160, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(99,0,255,0.45) 0%, rgba(59,130,246,0.2) 40%, transparent 70%)", filter: "blur(80px)", zIndex: 0 }} />
-        <div style={{ position: "fixed", width: 550, height: 450, top: "20%", right: -160, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(236,72,153,0.4) 0%, rgba(168,85,247,0.2) 40%, transparent 70%)", filter: "blur(80px)", zIndex: 0 }} />
-        <div style={{ position: "fixed", width: 500, height: 380, bottom: -100, left: "20%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(6,182,212,0.35) 0%, rgba(59,130,246,0.15) 40%, transparent 70%)", filter: "blur(90px)", zIndex: 0 }} />
-        <div style={{ position: "fixed", width: 300, height: 280, top: "50%", left: "40%", borderRadius: "50%", background: "radial-gradient(ellipse, rgba(251,146,60,0.18) 0%, transparent 70%)", filter: "blur(70px)", zIndex: 0 }} />
+        <div
+          style={{
+            position: "fixed",
+            width: 700,
+            height: 600,
+            top: -220,
+            left: -160,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(ellipse, rgba(99,0,255,0.45) 0%, rgba(59,130,246,0.2) 40%, transparent 70%)",
+            filter: "blur(80px)",
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            position: "fixed",
+            width: 550,
+            height: 450,
+            top: "20%",
+            right: -160,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(ellipse, rgba(236,72,153,0.4) 0%, rgba(168,85,247,0.2) 40%, transparent 70%)",
+            filter: "blur(80px)",
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            position: "fixed",
+            width: 500,
+            height: 380,
+            bottom: -100,
+            left: "20%",
+            borderRadius: "50%",
+            background:
+              "radial-gradient(ellipse, rgba(6,182,212,0.35) 0%, rgba(59,130,246,0.15) 40%, transparent 70%)",
+            filter: "blur(90px)",
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            position: "fixed",
+            width: 300,
+            height: 280,
+            top: "50%",
+            left: "40%",
+            borderRadius: "50%",
+            background:
+              "radial-gradient(ellipse, rgba(251,146,60,0.18) 0%, transparent 70%)",
+            filter: "blur(70px)",
+            zIndex: 0,
+          }}
+        />
 
         {/* animations */}
         <style>{`
