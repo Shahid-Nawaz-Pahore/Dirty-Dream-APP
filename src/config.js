@@ -1,0 +1,2 @@
+export const POOL_ADDRESS = "kQCFQZnRHcIUaLmsbbFNiYTbxzhEANCjppUmAUaSbUVszJKG";
+export const MINTER_ADDRESS = "kQCA3Nt0nYeSMA9Kn_mlQQmDXJo4NbD65m5r_U5O3kQOE1wl";
