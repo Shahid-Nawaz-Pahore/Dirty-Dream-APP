@@ -30,18 +30,6 @@ const Home = () => {
   const [txStatus, setTxStatus] = useState("idle");
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
-  // const { isConnected } = useAppKitAccount();
-  // const { disconnect } = useDisconnect();
-  // const { open } = useAppKit();
-
-  // const handleClick = async () => {
-  //   if (isConnected) {
-  //     await disconnect();
-  //   } else {
-  //     await open({ view: "Connect", namespace: "eip155" });
-  //   }
-  // };
-
   const client = useMemo(() => {
     try {
       const endpoint =
