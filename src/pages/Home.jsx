@@ -16,20 +16,9 @@ import toast from "react-hot-toast";
 import { useNavigate } from "react-router";
 import ReactGA from "react-ga4";
 
-// import {
-//   AppKitButton,
-//   useAppKit,
-//   useAppKitAccount,
-//   useDisconnect,
-// } from "@reown/appkit/react";
-
-// reactga
 
 const Home = () => {
-  // const [show, setShow] = useState(false);
-  // const [opened, setOpened] = useState(false);
-  // const [display, setDisplay] = useState(false);
-  // const [check, setCheck] = useState(false);
+ 
   const [swap, setSwap] = useState(false);
   const [tonConnectUI] = useTonConnectUI();
   const [balance, setBalance] = useState(null);
