@@ -152,10 +152,6 @@ const Home = () => {
 
   const handleWalletConnect = async () => {
     try {
-      // if (tonConnectUI.connected) {
-      //   console.log("Wallet already connected");
-      //   return;
-      // }
       if (tonConnectUI.connected) {
         tonConnectUI.closeModal();
         console.log("Wallet already connected");
@@ -199,7 +195,7 @@ const Home = () => {
 
       if (!displayAddress || !client) return;
 
-      // Step 1 — get minter address from pool
+      
       const minterAddr = MINTER_ADDRESS;
       if (!minterAddr) throw new Error("Could not fetch minter address");
 
@@ -297,7 +293,7 @@ const Home = () => {
         ],
       });
       ReactGA.event("unstake_transaction_success", {
-        // 👈 add this
+        //  add this
         user_address: displayAddress || "unknown",
         amount: input,
       });
@@ -339,7 +335,7 @@ const Home = () => {
     try {
       const result = await tonConnectUI.sendTransaction(transaction);
       ReactGA.event("stake_transaction_success", {
-        // 👈 add this
+        //  add this
         user_address: displayAddress || "unknown",
         amount: input,
       });
@@ -357,7 +353,7 @@ const Home = () => {
       // small delay
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // 🔥 force UI reset
+      //  force UI reset
       tonConnectUI.disconnect();
 
       throw e;
