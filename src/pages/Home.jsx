@@ -14,6 +14,10 @@ import { PiWalletFill } from "react-icons/pi";
 import { MINTER_ADDRESS, POOL_ADDRESS } from "../config";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
+import i18n from "i18next";
+import { GrLanguage } from "react-icons/gr";
+
 // import {
 //   AppKitButton,
 //   useAppKit,
@@ -37,6 +41,7 @@ const Home = () => {
   const [txStatus, setTxStatus] = useState("idle");
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
   // const { isConnected } = useAppKitAccount();
   // const { disconnect } = useDisconnect();
   // const { open } = useAppKit();
@@ -242,7 +247,7 @@ const Home = () => {
       );
 
       const ktonBalance = dataResult.stack.readBigNumber(); // in nano KTON
-      const formatted = (Number(ktonBalance) / 1e9);
+      const formatted = Number(ktonBalance) / 1e9;
 
       console.log("KTON Balance:", formatted);
       setKtonBalance(formatted);
@@ -254,43 +259,42 @@ const Home = () => {
   };
 
   const getTonBalance = async () => {
-
     if (!displayAddress || !client) return;
 
     const address = Address.parse(displayAddress);
 
     try {
-          console.log("Fetching balance for address:", address.toString());
-          const info = await client.getBalance(address);
-          console.log("Balance fetched successfully:", info);
-          setBalance((Number(info) / 1e9).toFixed(2));
-        } catch (balanceError) {
-          console.error("Error fetching balance from TonClient:", balanceError);
+      console.log("Fetching balance for address:", address.toString());
+      const info = await client.getBalance(address);
+      console.log("Balance fetched successfully:", info);
+      setBalance((Number(info) / 1e9).toFixed(2));
+    } catch (balanceError) {
+      console.error("Error fetching balance from TonClient:", balanceError);
 
-          try {
-            const apiEndpoint =
-              network === "testnet"
-                ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
-                : "https://toncenter.com/api/v2/getAddressBalance";
+      try {
+        const apiEndpoint =
+          network === "testnet"
+            ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
+            : "https://toncenter.com/api/v2/getAddressBalance";
 
-            const response = await fetch(
-              `${apiEndpoint}?address=${address.toString()}`,
-            );
-            const data = await response.json();
+        const response = await fetch(
+          `${apiEndpoint}?address=${address.toString()}`,
+        );
+        const data = await response.json();
 
-            if (data.ok && data.result) {
-              console.log("Balance fetched via fallback API:", data.result);
-              setBalance((Number(data.result) / 1e9).toFixed(2));
-            } else {
-              console.error("Fallback API error:", data);
-              setBalance("Error");
-            }
-          } catch (fallbackError) {
-            console.error("Fallback API also failed:", fallbackError);
-            setBalance("Error");
-          }
+        if (data.ok && data.result) {
+          console.log("Balance fetched via fallback API:", data.result);
+          setBalance((Number(data.result) / 1e9).toFixed(2));
+        } else {
+          console.error("Fallback API error:", data);
+          setBalance("Error");
+        }
+      } catch (fallbackError) {
+        console.error("Fallback API also failed:", fallbackError);
+        setBalance("Error");
+      }
+    }
   };
-  }
 
   useEffect(() => {
     const fetchBalance = async () => {
@@ -304,8 +308,10 @@ const Home = () => {
 
   const handleUnstake = async () => {
     if (!tonConnectUI.connected) throw Error("connect wallet first");
-    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
-    if (parseFloat(input) > ktonBalance) throw Error(`amount must be less than ${ktonBalance}`);
+    if (!input || Number(input) <= 0)
+      throw Error("amount must be greater than 0");
+    if (parseFloat(input) > ktonBalance)
+      throw Error(`amount must be less than ${ktonBalance}`);
 
     try {
       setTxStatus("pending");
@@ -349,7 +355,7 @@ const Home = () => {
         .storeBit(fillOrKill) // ✅ Flag 1: fill_or_kill (bit)
         .endCell();
 
-      //   const poolAddr = Address.parse(POOL_ADDRESS); 
+      //   const poolAddr = Address.parse(POOL_ADDRESS);
 
       // const { stack } = await client.runMethod(
       //   poolAddr,
@@ -388,24 +394,26 @@ const Home = () => {
 
       setTxStatus("success");
       console.log("✅ Unstake sent!");
-      setTimeout(()=>{
-        getKtonBalance()
-        getTonBalance()
-      },1000);
+      setTimeout(() => {
+        getKtonBalance();
+        getTonBalance();
+      }, 1000);
       return true;
     } catch (e) {
       console.error("❌ Unstake failed:", e);
       setTxStatus("error");
-      throw Error(e.stack.split(':')[1].split('\n')[0]);
+      throw Error(e.stack.split(":")[1].split("\n")[0]);
     }
   };
 
   const handleStake = async () => {
     if (!tonConnectUI.connected) throw Error("connect wallet first");
-    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
-    console.log("Balance : ",balance);
-    
-    if (parseFloat(input) > balance) throw Error(`amount must be less than ${balance}`);
+    if (!input || Number(input) <= 0)
+      throw Error("amount must be greater than 0");
+    console.log("Balance : ", balance);
+
+    if (parseFloat(input) > balance)
+      throw Error(`amount must be less than ${balance}`);
 
     setTxStatus("pending");
 
@@ -430,89 +438,93 @@ const Home = () => {
       await tonConnectUI.sendTransaction(transaction);
       console.log("Stake tx sent!");
       setTxStatus("success");
-      setTimeout(()=>{
-        getKtonBalance()
-        getTonBalance()
-      },1000);
+      setTimeout(() => {
+        getKtonBalance();
+        getTonBalance();
+      }, 1000);
       return true;
     } catch (e) {
-      console.log("Stake failed:", e.stack.split(':')[1].split('\n')[0]);
+      console.log("Stake failed:", e.stack.split(":")[1].split("\n")[0]);
       setTxStatus("error");
-      throw Error(e.stack.split(':')[1].split('\n')[0]);
+      throw Error(e.stack.split(":")[1].split("\n")[0]);
     }
   };
 
   const [exchangeRate, setExchangeRate] = useState(null); // TON per KTON ratio
   const exchangeRef = useRef(false);
 
+  useEffect(() => {
+    document.dir = i18n.language === "ur" ? "rtl" : "ltr";
+  }, [i18n.language]);
+
   const getExchangeRate = async () => {
-  try {
+    try {
+      if (exchangeRef.current == true) return;
 
-    if(exchangeRef.current == true) return;
+      exchangeRef.current = true;
 
-    exchangeRef.current = true;
+      const endpoint =
+        network === "testnet"
+          ? "https://testnet.toncenter.com/api/v2"
+          : "https://toncenter.com/api/v2";
 
-    const endpoint = network === "testnet"
-      ? "https://testnet.toncenter.com/api/v2"
-      : "https://toncenter.com/api/v2";
-
-    // ✅ Get total_balance from pool AND total_supply from minter
-    // in parallel using simple REST — no tuple parsing needed
-    const [poolRes, minterRes] = await Promise.all([
-      fetch(`${endpoint}/runGetMethod`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: POOL_ADDRESS,
-          method: "get_pool_full_data",
-          stack: [],
+      // ✅ Get total_balance from pool AND total_supply from minter
+      // in parallel using simple REST — no tuple parsing needed
+      const [poolRes, minterRes] = await Promise.all([
+        fetch(`${endpoint}/runGetMethod`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address: POOL_ADDRESS,
+            method: "get_pool_full_data",
+            stack: [],
+          }),
         }),
-      }),
-      fetch(`${endpoint}/runGetMethod`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: MINTER_ADDRESS,
-          method: "get_jetton_data",
-          stack: [],
+        fetch(`${endpoint}/runGetMethod`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address: MINTER_ADDRESS,
+            method: "get_jetton_data",
+            stack: [],
+          }),
         }),
-      }),
-    ]);
+      ]);
 
-    const poolData = await poolRes.json();
-    const minterData = await minterRes.json();
+      const poolData = await poolRes.json();
+      const minterData = await minterRes.json();
 
-    console.log("Pool stack:", poolData.result.stack);
-    console.log("Minter stack:", minterData.result.stack);
+      console.log("Pool stack:", poolData.result.stack);
+      console.log("Minter stack:", minterData.result.stack);
 
-    // pool stack[0] = state (num)
-    // pool stack[1] = halted (num)  
-    // pool stack[2] = total_balance (num) ✅
-    const totalBalance = BigInt(poolData.result.stack[2][1]);
+      // pool stack[0] = state (num)
+      // pool stack[1] = halted (num)
+      // pool stack[2] = total_balance (num) ✅
+      const totalBalance = BigInt(poolData.result.stack[2][1]);
 
-    // minter stack[0] = total_supply ✅
-    const totalSupply = BigInt(minterData.result.stack[0][1]);
+      // minter stack[0] = total_supply ✅
+      const totalSupply = BigInt(minterData.result.stack[0][1]);
 
-    console.log("Total TON in pool:", Number(totalBalance) / 1e9);
-    console.log("Total KTON supply:", Number(totalSupply) / 1e9);
+      console.log("Total TON in pool:", Number(totalBalance) / 1e9);
+      console.log("Total KTON supply:", Number(totalSupply) / 1e9);
 
-    if (totalSupply === 0n) throw new Error("Total supply is 0");
+      if (totalSupply === 0n) throw new Error("Total supply is 0");
 
-    const rate = Number(totalBalance) / Number(totalSupply);
-    console.log("✅ Exchange rate (TON per KTON):", rate);
-    setExchangeRate(rate);
-    return rate;
-  } catch (e) {
-    console.error("Failed to fetch exchange rate:", e);
-    return null;
-  }
-};
+      const rate = Number(totalBalance) / Number(totalSupply);
+      console.log("✅ Exchange rate (TON per KTON):", rate);
+      setExchangeRate(rate);
+      return rate;
+    } catch (e) {
+      console.error("Failed to fetch exchange rate:", e);
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (client && exchangeRate == null) {
       getExchangeRate();
     }
-  }, [client,exchangeRate]);
+  }, [client, exchangeRate]);
 
   const receiveAmount = useMemo(() => {
     if (!input || Number(input) <= 0 || !exchangeRate) return "0";
@@ -526,15 +538,69 @@ const Home = () => {
     }
   }, [input, swap, exchangeRate]);
 
+  const currentLang = i18n.language;
+
+  const changeLang = (lang) => {
+    i18n.changeLanguage(lang);
+    localStorage.setItem("lang", lang);
+  };
+
+  const languages = [
+    { code: "en", label: "EN" },
+    { code: "ur", label: "اردو" },
+    { code: "sp", label: "Spanish" },
+    { code: "ch", label: "Chinese" },
+  ];
+  const [open, setOpen] = useState(false);
+
   return (
     <div className="min-h-screen">
       <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
-        <img
-          onClick={() => window.open("https://dirty-dream.vercel.app/", "_blank")}
-          src="/Logo.svg"
-          alt="logo"
-          className="size-10 rotate-0 hover:rotate-360 transform duration-500 cursor-pointer"
-        />
+        <div className="flex justify-start gap-3">
+          <div>
+            <img
+              onClick={() =>
+                window.open("https://dirty-dream.vercel.app/", "_blank")
+              }
+              src="/Logo.svg"
+              alt="logo"
+              className="size-10 rotate-0 hover:rotate-360 transform duration-500 cursor-pointer"
+            />
+          </div>
+
+          <div className="relative inline-block">
+            {/* Title Button */}
+            <button
+              onClick={() => setOpen(!open)}
+              className="rounded-2xl bg-[#2DA6FF] flex justify-center items-center gap-2 cursor-pointer px-4 py-2 text-white font-semibold"
+            >
+              <GrLanguage className="font-semibold" />
+              Lang
+            </button>
+
+            {/* Dropdown */}
+            {open && (
+              <div className="absolute mt-2 w-40 cursor-pointer rounded-xl bg-transparent border border-gray-800 p-2 shadow-lg z-50">
+                {languages.map((lang) => (
+                  <button
+                    key={lang.code}
+                    onClick={() => {
+                      changeLang(lang.code);
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm font-semibold cursor-pointer rounded-lg transition-all duration-200 ${
+                      currentLang === lang.code
+                        ? "bg-gradient-to-r from-violet-600 to-blue-500 text-white shadow-md"
+                        : "text-violet-200 hover:text-white"
+                    }`}
+                  >
+                    {lang.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition">
           <PiWalletFill className="text-white w-6 h-6" />
@@ -787,7 +853,7 @@ const Home = () => {
             }}
             className={`${!swap ? "bg-gradient-to-r from-violet-600/60 to-blue-500/60 backdrop-blur-[20px] shadow-lg shadow-violet-500/20" : "bg-white/5"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all pointer-events-auto`}
           >
-            Stake
+            {t("stake")}
           </button>
           <button
             onClick={() => {
@@ -796,7 +862,7 @@ const Home = () => {
             }}
             className={`${swap ? "bg-gradient-to-r from-pink-600/60 to-violet-500/60 backdrop-blur-[20px] shadow-lg shadow-pink-500/20" : "bg-white/5"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all pointer-events-auto`}
           >
-            UnStake
+            {t("unstake")}
           </button>
         </div>
 
@@ -806,7 +872,7 @@ const Home = () => {
               <div className="w-full">
                 <div className="flex justify-between w-full mb-2">
                   <h1 className="text-sm md:text-md text-violet-200 font-semibold">
-                    Amount
+                    {t("amount")}
                   </h1>
                   <div className="flex flex-row gap-1 items-center">
                     <BiWalletAlt className="text-violet-300 w-5 h-5 md:w-6 md:h-6" />
@@ -836,7 +902,7 @@ const Home = () => {
                           else setInput(ktonBalance?.toString());
                         }}
                       >
-                        Max
+                        {t("max")}
                       </button>
                     </div>
                     <h1 className="text-2xl md:text-3xl text-white font-semibold">
@@ -885,7 +951,7 @@ const Home = () => {
               <div className="w-full">
                 <div className="flex justify-start items-start w-full mb-2">
                   <h1 className="text-sm md:text-md text-violet-200">
-                    Receive
+                    {t("receive")}
                   </h1>
                 </div>
 
@@ -933,8 +999,7 @@ const Home = () => {
                   <h1 className="text-violet-200 font-semibold">
                     {exchangeRate
                       ? `1 TON = ${(1 / exchangeRate).toFixed(6)} KTON`
-                      : "Fetching rate..."
-                    }
+                      : "Fetching rate..."}
                   </h1>
                   <div className="flex flex-row gap-1 items-center">
                     <FaGasPump className="text-cyan-400 w-3 h-3 md:w-4 md:h-4" />
@@ -978,7 +1043,7 @@ const Home = () => {
         <div className="w-full max-w-[19rem] md:max-w-[35rem] bg-white/5 backdrop-blur-[20px] flex flex-col gap-3 rounded-2xl mt-6 border border-pink-500/25 hover:border-pink-400/50 p-4 transition-colors duration-300">
           <div className="flex justify-between items-start">
             <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Upcoming rewards
+              {t("upcomingRewards")}
             </h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
@@ -992,7 +1057,7 @@ const Home = () => {
 
           <div className="flex justify-between items-start">
             <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Monthly (Est.)
+              {t("monthlyEst")}
             </h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
@@ -1003,7 +1068,7 @@ const Home = () => {
           </div>
 
           <div className="flex justify-between items-start">
-            <h1 className="text-violet-200 font-semibold">Yearly (Est.)</h1>
+            <h1 className="text-violet-200 font-semibold">{t("yearlyEst")}</h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
                 3.6932 TON
@@ -1016,7 +1081,7 @@ const Home = () => {
         <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border border-cyan-500/25 hover:border-cyan-400/50 bg-white/5 backdrop-blur-[20px] flex flex-row justify-between items-center p-4 transition-colors duration-300">
           <div className="flex flex-row gap-2 items-center">
             <IoIosFlower className="w-6 h-6 md:w-8 md:h-8 text-pink-400" />
-            <h1 className="text-white text-xl md:text-2xl">APY</h1>
+            <h1 className="text-white text-xl md:text-2xl">{t("apy")}</h1>
             <IoInformationCircleOutline className="w-4 h-4 md:w-5 md:h-5 text-violet-300" />
           </div>
           <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
@@ -1026,13 +1091,13 @@ const Home = () => {
 
         <div className="flex justify-center flex-col gap-2 items-center w-full max-w-[19rem] md:max-w-[35rem] mt-6">
           <div className="flex flex-col md:flex-row gap-2 items-center">
-            <h1 className="text-violet-300 font-semibold">Audited by</h1>
+            <h1 className="text-violet-300 font-semibold">{t("auditedBy")}</h1>
             <PiLockKeyOpenFill className="w-6 h-6 md:w-8 md:h-8 text-cyan-400" />
             <div className="text-white font-bold">
               Ton <span className="text-violet-300 font-normal">Bit</span>
             </div>
             <h1 className="font-semibold text-violet-300">
-              TON Foundation-endorsed
+              {t("TON Foundation-endorsed")}
             </h1>
           </div>
         </div>

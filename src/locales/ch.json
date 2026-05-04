@@ -1,0 +1,13 @@
+{
+  "stake": "质押",
+  "unstake": "赎回",
+  "amount": "数量",
+  "max": "最大值",
+  "receive": "获得",
+  "upcomingRewards": "即将到来的奖励",
+  "monthlyEst": "每月（预估）",
+  "yearlyEst": "每年（预估）",
+  "apy": "年化收益率",
+  "auditedBy": "审计方",
+  "TON Foundation-endorsed": "由TON基金会认可"
+}

@@ -1,0 +1,13 @@
+{
+  "stake": "Stake",
+  "unstake": "Unstake",
+  "amount": "Amount",
+  "max": "Max",
+  "receive": "Receive",
+  "upcomingRewards": "Upcoming rewards",
+  "monthlyEst": "Monthly (Est.)",
+  "yearlyEst": "Yearly (Est.)",
+  "apy": "APY",
+  "auditedBy": "Audited by",
+  "TON Foundation-endorsed": "TON Foundation-endorsed"
+}

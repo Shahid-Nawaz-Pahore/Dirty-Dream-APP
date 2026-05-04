@@ -4,7 +4,7 @@ import Home from "./pages/Home.jsx";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
 import { Toaster } from "react-hot-toast";
 import Loader from "./Loader.jsx";
-
+import './i18n.js';
 function DotCanvas() {
   const ref = useRef(null);
 
