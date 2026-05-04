@@ -854,7 +854,7 @@ const Home = () => {
 
           <div className="flex justify-between items-start">
             <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Monthly (Est.)
+              Monthly (Est)
             </h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
@@ -877,7 +877,7 @@ const Home = () => {
 
         <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border border-cyan-500/25 hover:border-cyan-400/50 bg-white/5 backdrop-blur-[20px] flex flex-row justify-between items-center p-4 transition-colors duration-300">
           <div className="flex flex-row gap-2 items-center">
-            <IoIosFlower className="w-6 h-6 md:w-8 md:h-8 text-pink-400" />
+            <IoIosFlower className="w-6 h-6 md:w-7 md:h-7 text-pink-400" />
             <h1 className="text-white text-xl md:text-2xl">APY</h1>
             <IoInformationCircleOutline className="w-4 h-4 md:w-5 md:h-5 text-violet-300" />
           </div>
@@ -889,7 +889,7 @@ const Home = () => {
         <div className="flex justify-center flex-col gap-2 items-center w-full max-w-[19rem] md:max-w-[35rem] mt-6">
           <div className="flex flex-col md:flex-row gap-2 items-center">
             <h1 className="text-violet-300 font-semibold">Audited by</h1>
-            <PiLockKeyOpenFill className="w-6 h-6 md:w-8 md:h-8 text-cyan-400" />
+            <PiLockKeyOpenFill className="w-6 h-6 md:w-7 md:h-7 text-cyan-300" />
             <div className="text-white font-bold">
               Ton <span className="text-violet-300 font-normal">Bit</span>
             </div>
