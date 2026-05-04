@@ -272,21 +272,8 @@ const Home = () => {
       const waitTillRoundEnd = false; // immediate withdrawal
       const fillOrKill = false; // fallback to round-end if immediate unavailable
 
-      // const customPayload = beginCell()
-      //   .storeBit(waitTillRoundEnd)   // bit 0
-      //   .storeBit(fillOrKill)         // bit 1
-      //   .endCell();
-
-      // const burnBody = beginCell()
-      //   .storeUint(0x595f07bc, 32)       // op: burn
-      //   .storeUint(0, 64)                 // query_id
-      //   .storeCoins(toNano(input))        // jetton amount
-      //   .storeAddress(userAddr)           // response_destination
-      //   .storeBit(1)                      // ✅ Maybe = 1 (custom_payload present)
-      //   .storeRef(customPayload)          // ✅ flags cell
-      //   .endCell();
-
-      // ✅ FIXED: Custom burn body matching sendBurnWithParams
+  
+  
       const burnBody = beginCell()
         .storeUint(0x595f07bc, 32) // op: "hbnr" = 0x73626e72 (custom burn)
         .storeUint(0, 64) // query_id
@@ -654,7 +641,7 @@ const Home = () => {
               ReactGA.event("stake_clicked", {
                 wallet_action: "StakeClicked",
                 button_name: "Stake",
-                user_address: displayAddress || "unknown", // 👈 add this
+                user_address: displayAddress || "unknown", //  add this
               });
               setSwap((prev) => !prev);
               setInput(0);
@@ -669,7 +656,7 @@ const Home = () => {
               ReactGA.event("unstake_clicked", {
                 wallet_action: "UnStakeClicked",
                 button_name: "UnStake",
-                user_address: displayAddress || "unknown", // 👈 add this
+                user_address: displayAddress || "unknown", //  add this  
               });
               setSwap((prev) => !prev);
               setInput(0);
@@ -707,6 +694,10 @@ const Home = () => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                   />
+
+
+
+
                   <div className="flex flex-row justify-center items-center gap-1 md:gap-2 items-center flex-shrink-0">
                     <div className="flex justify-end items-end w-full mt-1">
                       <button
@@ -860,7 +851,7 @@ const Home = () => {
                 0.0080 TON
               </h1>
               <h1 className="text-violet-300 text-xs md:text-sm">
-                (2026-01-19 08:34)
+                (2026-01-20 09:34)
               </h1>
             </div>
           </div>
@@ -917,3 +908,4 @@ const Home = () => {
 };
 
 export default Home;
+// homeeee 

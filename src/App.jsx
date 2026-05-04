@@ -6,7 +6,7 @@ import { Toaster } from "react-hot-toast";
 import Loader from "./Loader.jsx";
 import ReactGA from "react-ga4";
 
-/* -------------------- DOT CANVAS -------------------- */
+
 function DotCanvas() {
   const ref = useRef(null);
 
@@ -96,18 +96,18 @@ function DotCanvas() {
   );
 }
 
-/* -------------------- APP -------------------- */
+
 const App = () => {
   const [loading, setLoading] = useState(true);
   const location = useLocation();
 
-  /* fake loading screen */
+  
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 3000);
     return () => clearTimeout(timer);
   }, []);
 
-  /* GA PAGE TRACKING */
+  
   useEffect(() => {
     if (loading) return;
 
@@ -118,6 +118,8 @@ const App = () => {
   }, [location, loading]);
 
   if (loading) return <Loader />;
+
+  // added the new vercel deployed project link in manifest...
 
   return (
     <TonConnectUIProvider
