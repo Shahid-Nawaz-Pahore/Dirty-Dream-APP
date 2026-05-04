@@ -7,47 +7,94 @@ import { MdKeyboardArrowDown, MdKeyboardArrowUp } from "react-icons/md";
 import { IoIosFlower } from "react-icons/io";
 import { IoInformationCircleOutline } from "react-icons/io5";
 import { PiLockKeyOpenFill } from "react-icons/pi";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import { TonClient, Address, beginCell, toNano } from "ton";
 import { PiWalletFill } from "react-icons/pi";
 import { MINTER_ADDRESS, POOL_ADDRESS } from "../config";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router";
-// import {
-//   AppKitButton,
-//   useAppKit,
-//   useAppKitAccount,
-//   useDisconnect,
-// } from "@reown/appkit/react";
+
+import { z } from "zod";
+
+// ─── Zod Schemas ─────────────────────────────────────────────────────────────
+
+const BalanceApiSchema = z.object({
+  ok: z.boolean(),
+  result: z.string().optional(),
+});
+
+const PoolDataSchema = z.object({
+  result: z.object({
+    stack: z.array(z.array(z.unknown())).min(3),
+  }),
+});
+
+const MinterDataSchema = z.object({
+  result: z.object({
+    stack: z.array(z.array(z.unknown())).min(1),
+  }),
+});
+
+const StakeInputSchema = z
+  .object({
+    input: z
+      .union([z.string(), z.number()])
+      .transform((v) => Number(v))
+      .pipe(z.number().positive("Amount must be greater than 0")),
+    balance: z.number(),
+    connected: z.literal(true, {
+      errorMap: () => ({ message: "Connect wallet first" }),
+    }),
+  })
+  .refine((d) => d.input <= d.balance, {
+    message: "Amount exceeds available balance",
+    path: ["input"],
+  });
+
+const UnstakeInputSchema = z
+  .object({
+    input: z
+      .union([z.string(), z.number()])
+      .transform((v) => Number(v))
+      .pipe(z.number().positive("Amount must be greater than 0")),
+    ktonBalance: z.number(),
+    connected: z.literal(true, {
+      errorMap: () => ({ message: "Connect wallet first" }),
+    }),
+  })
+  .refine((d) => d.input <= d.ktonBalance, {
+    message: "Amount exceeds available KTON balance",
+    path: ["input"],
+  });
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const POLL_ATTEMPTS = 5;
+const POLL_INTERVAL_MS = 3000;
+const initialTxState = { status: "idle", error: null }; // status: idle | pending | success | error
 
 const Home = () => {
-  // const [show, setShow] = useState(false);
-  // const [opened, setOpened] = useState(false);
-  // const [display, setDisplay] = useState(false);
-  // const [check, setCheck] = useState(false);
   const [swap, setSwap] = useState(false);
   const [tonConnectUI] = useTonConnectUI();
   const [balance, setBalance] = useState(null);
   const [ktonBalance, setKtonBalance] = useState(0);
   const [displayAddress, setDisplayAddress] = useState(null);
-  const [network, setNetwork] = useState("testnet"); // ADDED THIS
+  const [network, setNetwork] = useState("testnet");
   const [showDisconnect, setShowDisconnect] = useState(false);
   const [input, setInput] = useState(0);
-  const [txStatus, setTxStatus] = useState("idle");
+  const [txState, setTxState] = useState(initialTxState); // replaces txStatus string
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
-  // const { isConnected } = useAppKitAccount();
-  // const { disconnect } = useDisconnect();
-  // const { open } = useAppKit();
 
-  // const handleClick = async () => {
-  //   if (isConnected) {
-  //     await disconnect();
-  //   } else {
-  //     await open({ view: "Connect", namespace: "eip155" });
-  //   }
-  // };
+  // Guards
+  const exchangeRef = useRef(false);
+  const isFetchingKton = useRef(false);
+  const networkRef = useRef(network); // stable ref for async closures
+  const unsubscribeRef = useRef(null);
+
+  useEffect(() => {
+    networkRef.current = network;
+  }, [network]);
 
   const client = useMemo(() => {
     try {
@@ -66,20 +113,123 @@ const Home = () => {
     }
   }, [network]);
 
+  // ─── Reset on disconnect / network switch ─────────────────────────────────
+  const resetWalletState = useCallback(() => {
+    setBalance(null);
+    setKtonBalance(0);
+    setDisplayAddress(null);
+    setTxState(initialTxState);
+    setInput(0);
+  }, []);
+
+  // ─── TON balance ──────────────────────────────────────────────────────────
+  const getTonBalance = useCallback(
+    async (addressObj) => {
+      if (!client || !addressObj) return;
+      try {
+        console.log("Fetching balance for address:", addressObj.toString());
+        const info = await client.getBalance(addressObj);
+        console.log("Balance fetched successfully:", info);
+        setBalance((Number(info) / 1e9).toFixed(2));
+      } catch (balanceError) {
+        console.error("Error fetching balance from TonClient:", balanceError);
+        try {
+          const apiEndpoint =
+            networkRef.current === "testnet"
+              ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
+              : "https://toncenter.com/api/v2/getAddressBalance";
+          const response = await fetch(
+            `${apiEndpoint}?address=${addressObj.toString()}`,
+          );
+          const data = await response.json();
+          const parsed = BalanceApiSchema.parse(data);
+          if (parsed.ok && parsed.result) {
+            console.log("Balance fetched via fallback API:", parsed.result);
+            setBalance((Number(parsed.result) / 1e9).toFixed(2));
+          } else {
+            console.error("Fallback API error:", data);
+            setBalance("Error");
+          }
+        } catch (fallbackError) {
+          console.error("Fallback API also failed:", fallbackError);
+          setBalance("Error");
+        }
+      }
+    },
+    [client],
+  );
+
+  // ─── KTON balance ─────────────────────────────────────────────────────────
+  const getKtonBalance = useCallback(
+    async (addrString) => {
+      if (!client || !addrString || isFetchingKton.current) return;
+      isFetchingKton.current = true;
+      try {
+        console.log("KTON BALANCE FETCH CALLED");
+        console.log("Display Address : ", addrString);
+
+        const minterAddr = Address.parse(MINTER_ADDRESS);
+        const userAddr = Address.parse(addrString);
+
+        const walletResult = await client.runMethod(
+          minterAddr,
+          "get_wallet_address",
+          [
+            {
+              type: "slice",
+              cell: beginCell().storeAddress(userAddr).endCell(),
+            },
+          ],
+        );
+        const ktonWalletAddr = walletResult.stack.readAddress();
+
+        const dataResult = await client.runMethod(
+          ktonWalletAddr,
+          "get_wallet_data",
+          [],
+        );
+        const ktonBal = dataResult.stack.readBigNumber();
+        const formatted = Number(ktonBal) / 1e9;
+        console.log("KTON Balance:", formatted);
+        setKtonBalance(formatted);
+      } catch (e) {
+        console.log("KTON balance fetch failed (likely 0):", e.message);
+        setKtonBalance("0.0000");
+      } finally {
+        isFetchingKton.current = false;
+      }
+    },
+    [client],
+  );
+
+  // ─── Post-TX polling — replaces one-shot setTimeout ───────────────────────
+  const pollBalances = useCallback(
+    async (addrString, attempt = 0) => {
+      if (attempt >= POLL_ATTEMPTS) return;
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      const addr = Address.parse(addrString);
+      await Promise.all([getTonBalance(addr), getKtonBalance(addrString)]);
+      pollBalances(addrString, attempt + 1);
+    },
+    [getTonBalance, getKtonBalance],
+  );
+
+  // ─── Wallet status change ─────────────────────────────────────────────────
   useEffect(() => {
     if (!client || !tonConnectUI) return;
 
+    // Clean up previous subscription before creating a new one
+    if (unsubscribeRef.current) unsubscribeRef.current();
+
     const unsubscribe = tonConnectUI.onStatusChange(async (wallet) => {
       if (!wallet) {
-        setBalance(null);
-        setDisplayAddress(null);
+        resetWalletState();
         return;
       }
 
       try {
         const rawAddress = wallet.account.address;
 
-        // Detect testnet with proper priority
         let isTestnet = false;
 
         if (!rawAddress.includes(":")) {
@@ -97,6 +247,12 @@ const Home = () => {
           isTestnet = false;
         }
 
+        // If network changed, reset exchange rate so it re-fetches automatically
+        if (networkRef.current !== (isTestnet ? "testnet" : "mainnet")) {
+          exchangeRef.current = false;
+          setExchangeRate(null);
+        }
+
         console.log("Raw address:", rawAddress);
         console.log("Chain:", wallet.account.chain);
         console.log("Detected as testnet:", isTestnet);
@@ -110,10 +266,8 @@ const Home = () => {
           } else {
             const parsed = Address.parseFriendly(rawAddress);
             address = parsed.address;
-
             isTestnet = parsed.isTestOnly;
             setNetwork(isTestnet ? "testnet" : "mainnet");
-
             console.log("Parsed isTestOnly:", parsed.isTestOnly);
           }
 
@@ -121,7 +275,6 @@ const Home = () => {
             bounceable: false,
             testOnly: isTestnet,
           });
-
           setDisplayAddress(friendlyAddress);
         } catch (e) {
           console.error("Failed to parse address:", e);
@@ -129,45 +282,23 @@ const Home = () => {
           return;
         }
 
-        try {
-          console.log("Fetching balance for address:", address.toString());
-          const info = await client.getBalance(address);
-          console.log("Balance fetched successfully:", info);
-          setBalance((Number(info) / 1e9).toFixed(2));
-        } catch (balanceError) {
-          console.error("Error fetching balance from TonClient:", balanceError);
-
-          try {
-            const apiEndpoint =
-              network === "testnet"
-                ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
-                : "https://toncenter.com/api/v2/getAddressBalance";
-
-            const response = await fetch(
-              `${apiEndpoint}?address=${address.toString()}`,
-            );
-            const data = await response.json();
-
-            if (data.ok && data.result) {
-              console.log("Balance fetched via fallback API:", data.result);
-              setBalance((Number(data.result) / 1e9).toFixed(2));
-            } else {
-              console.error("Fallback API error:", data);
-              setBalance("Error");
-            }
-          } catch (fallbackError) {
-            console.error("Fallback API also failed:", fallbackError);
-            setBalance("Error");
-          }
-        }
+        // Fetch both balances concurrently on connect
+        await Promise.all([
+          getTonBalance(address),
+          getKtonBalance(friendlyAddress),
+        ]);
       } catch (e) {
         console.error("Error in wallet status change:", e);
+        if (e instanceof z.ZodError) {
+          toast.error("Wallet returned unexpected data format");
+        }
         setBalance("Error");
       }
     });
 
+    unsubscribeRef.current = unsubscribe;
     return () => unsubscribe();
-  }, [tonConnectUI, client]);
+  }, [tonConnectUI, client, getTonBalance, getKtonBalance, resetWalletState]);
 
   const handleWalletConnect = async () => {
     try {
@@ -175,7 +306,6 @@ const Home = () => {
         console.log("Wallet already connected");
         return;
       }
-
       await tonConnectUI.openModal();
     } catch (error) {
       console.error("Error connecting wallet:", error);
@@ -185,12 +315,14 @@ const Home = () => {
   const handleWalletDisconnect = async () => {
     try {
       await tonConnectUI.disconnect();
-      setShowDisconnect(false);
-      setBalance(null);
-      setDisplayAddress(null);
-      setNetwork("mainnet"); // ADDED THIS
     } catch (error) {
       console.error("Error disconnecting wallet:", error);
+    } finally {
+      // always reset even if disconnect throws
+      setShowDisconnect(false);
+      resetWalletState();
+      setNetwork("mainnet");
+      exchangeRef.current = false;
     }
   };
 
@@ -200,119 +332,32 @@ const Home = () => {
         setShowDisconnect(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showDisconnect]);
 
-  const getKtonBalance = async () => {
-    try {
-      console.log("KTON BALANCE FETCH CALLED");
-      console.log("Display Address : ", displayAddress);
-      console.log("Client : ", client);
-
-      if (!displayAddress || !client) return;
-
-      // Step 1 — get minter address from pool
-      const minterAddr = MINTER_ADDRESS;
-      if (!minterAddr) throw new Error("Could not fetch minter address");
-
-      // Step 2 — get your personal KTON jetton wallet address
-      const userAddr = Address.parse(displayAddress);
-
-      const walletResult = await client.runMethod(
-        minterAddr,
-        "get_wallet_address",
-        [
-          {
-            type: "slice",
-            cell: beginCell().storeAddress(userAddr).endCell(),
-          },
-        ],
-      );
-
-      const ktonWalletAddr = walletResult.stack.readAddress();
-
-      // Step 3 — get balance from your jetton wallet
-      // get_wallet_data returns: balance, owner, minter, wallet_code
-      const dataResult = await client.runMethod(
-        ktonWalletAddr,
-        "get_wallet_data",
-        [],
-      );
-
-      const ktonBalance = dataResult.stack.readBigNumber(); // in nano KTON
-      const formatted = (Number(ktonBalance) / 1e9);
-
-      console.log("KTON Balance:", formatted);
-      setKtonBalance(formatted);
-    } catch (e) {
-      // Wallet doesn't exist yet = 0 balance (no txs yet)
-      console.log("KTON balance fetch failed (likely 0):", e.message);
-      setKtonBalance("0.0000");
-    }
-  };
-
-  const getTonBalance = async () => {
-
-    if (!displayAddress || !client) return;
-
-    const address = Address.parse(displayAddress);
-
-    try {
-          console.log("Fetching balance for address:", address.toString());
-          const info = await client.getBalance(address);
-          console.log("Balance fetched successfully:", info);
-          setBalance((Number(info) / 1e9).toFixed(2));
-        } catch (balanceError) {
-          console.error("Error fetching balance from TonClient:", balanceError);
-
-          try {
-            const apiEndpoint =
-              network === "testnet"
-                ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
-                : "https://toncenter.com/api/v2/getAddressBalance";
-
-            const response = await fetch(
-              `${apiEndpoint}?address=${address.toString()}`,
-            );
-            const data = await response.json();
-
-            if (data.ok && data.result) {
-              console.log("Balance fetched via fallback API:", data.result);
-              setBalance((Number(data.result) / 1e9).toFixed(2));
-            } else {
-              console.error("Fallback API error:", data);
-              setBalance("Error");
-            }
-          } catch (fallbackError) {
-            console.error("Fallback API also failed:", fallbackError);
-            setBalance("Error");
-          }
-  };
-  }
-
   useEffect(() => {
-    const fetchBalance = async () => {
-      if (client && displayAddress) {
-        await getKtonBalance();
-      }
-    };
-
-    fetchBalance();
+    if (client && displayAddress) {
+      getKtonBalance(displayAddress);
+    }
   }, [client, displayAddress]);
 
+  // ─── Unstake ──────────────────────────────────────────────────────────────
   const handleUnstake = async () => {
-    if (!tonConnectUI.connected) throw Error("connect wallet first");
-    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
-    if (parseFloat(input) > ktonBalance) throw Error(`amount must be less than ${ktonBalance}`);
+    // Zod validation replaces manual if-throws
+    const validation = UnstakeInputSchema.safeParse({
+      input,
+      ktonBalance: parseFloat(ktonBalance ?? "0"),
+      connected: tonConnectUI.connected,
+    });
+    if (!validation.success) {
+      throw new Error(validation.error.issues[0].message);
+    }
 
     try {
-      setTxStatus("pending");
+      setTxState({ status: "pending", error: null });
 
       const minterAddr = Address.parse(MINTER_ADDRESS);
-      if (!minterAddr) throw new Error("Could not fetch minter address");
-
       const userAddr = Address.parse(displayAddress);
 
       const walletResult = await client.runMethod(
@@ -322,55 +367,17 @@ const Home = () => {
       );
       const ktonWalletAddr = walletResult.stack.readAddress();
 
-      const waitTillRoundEnd = false; // immediate withdrawal
-      const fillOrKill = false; // fallback to round-end if immediate unavailable
+      const waitTillRoundEnd = false;
+      const fillOrKill = false;
 
-      // const customPayload = beginCell()
-      //   .storeBit(waitTillRoundEnd)   // bit 0
-      //   .storeBit(fillOrKill)         // bit 1
-      //   .endCell();
-
-      // const burnBody = beginCell()
-      //   .storeUint(0x595f07bc, 32)       // op: burn
-      //   .storeUint(0, 64)                 // query_id
-      //   .storeCoins(toNano(input))        // jetton amount
-      //   .storeAddress(userAddr)           // response_destination
-      //   .storeBit(1)                      // ✅ Maybe = 1 (custom_payload present)
-      //   .storeRef(customPayload)          // ✅ flags cell
-      //   .endCell();
-
-      // ✅ FIXED: Custom burn body matching sendBurnWithParams
       const burnBody = beginCell()
-        .storeUint(0x595f07bc, 32) // op: "hbnr" = 0x73626e72 (custom burn)
-        .storeUint(0, 64) // query_id
-        .storeCoins(toNano(input)) // jetton amount
-        .storeAddress(userAddr) // response_destination
-        .storeBit(waitTillRoundEnd) // ✅ Flag 0: wait_till_round_end (bit)
-        .storeBit(fillOrKill) // ✅ Flag 1: fill_or_kill (bit)
+        .storeUint(0x595f07bc, 32)
+        .storeUint(0, 64)
+        .storeCoins(toNano(input))
+        .storeAddress(userAddr)
+        .storeBit(waitTillRoundEnd)
+        .storeBit(fillOrKill)
         .endCell();
-
-      //   const poolAddr = Address.parse(POOL_ADDRESS); 
-
-      // const { stack } = await client.runMethod(
-      //   poolAddr,
-      //   "get_pool_full_data",
-      //   []
-      // );
-
-      // const state = stack.readNumber();
-      // const halted = stack.readBoolean();
-      // const totalBalance = stack.readBigNumber();
-      // const interestRate = stack.readNumber();
-      // const optimisticDepositWithdrawals = stack.readBoolean();
-      // const depositsOpen = stack.readBoolean();
-
-      // console.log({
-      //   state,
-      //   halted,
-      //   depositsOpen,
-      //   optimisticDepositWithdrawals,
-      //   totalBalance: Number(totalBalance) / 1e9,
-      // });
 
       await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 300,
@@ -386,41 +393,43 @@ const Home = () => {
         ],
       });
 
-      setTxStatus("success");
+      setTxState({ status: "success", error: null });
       console.log("✅ Unstake sent!");
-      setTimeout(()=>{
-        getKtonBalance()
-        getTonBalance()
-      },1000);
+      pollBalances(displayAddress); // replaces setTimeout one-shot
       return true;
     } catch (e) {
       console.error("❌ Unstake failed:", e);
-      setTxStatus("error");
-      throw Error(e.stack.split(':')[1].split('\n')[0]);
+      const msg = e?.message ?? "Unstake failed";
+      setTxState({ status: "error", error: msg });
+      throw new Error(msg);
     }
   };
 
+  // ─── Stake ────────────────────────────────────────────────────────────────
   const handleStake = async () => {
-    if (!tonConnectUI.connected) throw Error("connect wallet first");
-    if (!input || Number(input) <= 0) throw Error("amount must be greater than 0");
-    console.log("Balance : ",balance);
-    
-    if (parseFloat(input) > balance) throw Error(`amount must be less than ${balance}`);
+    // Zod validation replaces manual if-throws
+    const validation = StakeInputSchema.safeParse({
+      input,
+      balance: parseFloat(balance ?? "0"),
+      connected: tonConnectUI.connected,
+    });
+    if (!validation.success) {
+      throw new Error(validation.error.issues[0].message);
+    }
 
-    setTxStatus("pending");
+    setTxState({ status: "pending", error: null });
 
-    // op code for deposit = 0x47d54391 (KTON Pool Root)
     const body = beginCell()
-      .storeUint(0x47d54391, 32) // op: deposit
-      .storeUint(0, 64) // query_id
+      .storeUint(0x47d54391, 32)
+      .storeUint(0, 64)
       .endCell();
 
     const transaction = {
-      validUntil: Math.floor(Date.now() / 1000) + 300, // 5 min
+      validUntil: Math.floor(Date.now() / 1000) + 300,
       messages: [
         {
-          address: POOL_ADDRESS, // testnet address you got
-          amount: (toNano(input) + toNano("1")).toString(), // TON amount in nanotons
+          address: POOL_ADDRESS,
+          amount: (toNano(input) + toNano("1")).toString(),
           payload: body.toBoc().toString("base64"),
         },
       ],
@@ -429,112 +438,110 @@ const Home = () => {
     try {
       await tonConnectUI.sendTransaction(transaction);
       console.log("Stake tx sent!");
-      setTxStatus("success");
-      setTimeout(()=>{
-        getKtonBalance()
-        getTonBalance()
-      },1000);
+      setTxState({ status: "success", error: null });
+      pollBalances(displayAddress); // replaces setTimeout one-shot
       return true;
     } catch (e) {
-      console.log("Stake failed:", e.stack.split(':')[1].split('\n')[0]);
-      setTxStatus("error");
-      throw Error(e.stack.split(':')[1].split('\n')[0]);
+      const msg = e?.message ?? "Stake failed";
+      console.log("Stake failed:", msg);
+      setTxState({ status: "error", error: msg });
+      throw new Error(msg);
     }
   };
 
-  const [exchangeRate, setExchangeRate] = useState(null); // TON per KTON ratio
-  const exchangeRef = useRef(false);
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const exchangeRateRef = useRef(null); // keep exchangeRef alias working
 
-  const getExchangeRate = async () => {
-  try {
+  const getExchangeRate = useCallback(async () => {
+    try {
+      if (exchangeRef.current == true) return;
+      exchangeRef.current = true;
 
-    if(exchangeRef.current == true) return;
+      const endpoint =
+        networkRef.current === "testnet"
+          ? "https://testnet.toncenter.com/api/v2"
+          : "https://toncenter.com/api/v2";
 
-    exchangeRef.current = true;
-
-    const endpoint = network === "testnet"
-      ? "https://testnet.toncenter.com/api/v2"
-      : "https://toncenter.com/api/v2";
-
-    // ✅ Get total_balance from pool AND total_supply from minter
-    // in parallel using simple REST — no tuple parsing needed
-    const [poolRes, minterRes] = await Promise.all([
-      fetch(`${endpoint}/runGetMethod`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: POOL_ADDRESS,
-          method: "get_pool_full_data",
-          stack: [],
+      const [poolRes, minterRes] = await Promise.all([
+        fetch(`${endpoint}/runGetMethod`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address: POOL_ADDRESS,
+            method: "get_pool_full_data",
+            stack: [],
+          }),
         }),
-      }),
-      fetch(`${endpoint}/runGetMethod`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: MINTER_ADDRESS,
-          method: "get_jetton_data",
-          stack: [],
+        fetch(`${endpoint}/runGetMethod`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address: MINTER_ADDRESS,
+            method: "get_jetton_data",
+            stack: [],
+          }),
         }),
-      }),
-    ]);
+      ]);
 
-    const poolData = await poolRes.json();
-    const minterData = await minterRes.json();
+      // Zod validates contract response shape before accessing indices
+      const poolData = PoolDataSchema.parse(await poolRes.json());
+      const minterData = MinterDataSchema.parse(await minterRes.json());
 
-    console.log("Pool stack:", poolData.result.stack);
-    console.log("Minter stack:", minterData.result.stack);
+      console.log("Pool stack:", poolData.result.stack);
+      console.log("Minter stack:", minterData.result.stack);
 
-    // pool stack[0] = state (num)
-    // pool stack[1] = halted (num)  
-    // pool stack[2] = total_balance (num) ✅
-    const totalBalance = BigInt(poolData.result.stack[2][1]);
+      const totalBalance = BigInt(poolData.result.stack[2][1]);
+      const totalSupply = BigInt(minterData.result.stack[0][1]);
 
-    // minter stack[0] = total_supply ✅
-    const totalSupply = BigInt(minterData.result.stack[0][1]);
+      console.log("Total TON in pool:", Number(totalBalance) / 1e9);
+      console.log("Total KTON supply:", Number(totalSupply) / 1e9);
 
-    console.log("Total TON in pool:", Number(totalBalance) / 1e9);
-    console.log("Total KTON supply:", Number(totalSupply) / 1e9);
+      if (totalSupply === 0n) throw new Error("Total supply is 0");
 
-    if (totalSupply === 0n) throw new Error("Total supply is 0");
-
-    const rate = Number(totalBalance) / Number(totalSupply);
-    console.log("✅ Exchange rate (TON per KTON):", rate);
-    setExchangeRate(rate);
-    return rate;
-  } catch (e) {
-    console.error("Failed to fetch exchange rate:", e);
-    return null;
-  }
-};
+      const rate = Number(totalBalance) / Number(totalSupply);
+      console.log("✅ Exchange rate (TON per KTON):", rate);
+      setExchangeRate(rate);
+      return rate;
+    } catch (e) {
+      console.error("Failed to fetch exchange rate:", e);
+      exchangeRef.current = false; // allow retry on failure
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (client && exchangeRate == null) {
       getExchangeRate();
     }
-  }, [client,exchangeRate]);
+  }, [client, exchangeRate, getExchangeRate]);
 
   const receiveAmount = useMemo(() => {
     if (!input || Number(input) <= 0 || !exchangeRate) return "0";
 
     if (swap) {
-      // Unstaking: input is KTON → receive TON
       return (Number(input) * exchangeRate).toFixed(2);
     } else {
-      // Staking: input is TON → receive KTON
       return (Number(input) / exchangeRate).toFixed(2);
     }
   }, [input, swap, exchangeRate]);
 
+  const isPending = txState.status === "pending";
+
   return (
     <div className="min-h-screen">
       <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
-        <img
-          onClick={() => window.open("https://dirty-dream.vercel.app/", "_blank")}
-          src="/Logo.svg"
-          alt="logo"
-          className="size-10 rotate-0 hover:rotate-360 transform duration-500 cursor-pointer"
-        />
+        <div className="flex justify-start gap-3">
+          <div>
+            <img
+              onClick={() =>
+                window.open("https://dirty-dream.vercel.app/", "_blank")
+              }
+              src="/Logo.svg"
+              alt="logo"
+              className="size-10 rotate-0 hover:rotate-360 transform duration-500 cursor-pointer"
+            />
+          </div>
+        </div>
 
         <div className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition">
           <PiWalletFill className="text-white w-6 h-6" />
@@ -702,7 +709,6 @@ const Home = () => {
                           <p className="text-white font-bold text-sm">
                             {balance}
                           </p>
-                          {/* balance  */}
                         </div>
                       )}
                       {ktonBalance && (
@@ -721,7 +727,6 @@ const Home = () => {
                           </p>
                           <p className="text-white font-bold text-sm">
                             {ktonBalance}
-                            {/* kton balance  */}
                           </p>
                         </div>
                       )}
@@ -825,12 +830,18 @@ const Home = () => {
                     type="number"
                     className="text-2xl md:text-3xl font-bold bg-transparent border-none outline-none text-white w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      // clear stale tx feedback when user types a new amount
+                      if (txState.status !== "idle") setTxState(initialTxState);
+                    }}
+                    disabled={isPending}
                   />
                   <div className="flex flex-row justify-center items-center gap-1 md:gap-2 items-center flex-shrink-0">
                     <div className="flex justify-end items-end w-full mt-1">
                       <button
                         className="text-sm md:text-md font-semibold text-violet-200 hover:text-white bg-violet-500/20 hover:bg-violet-500/40 border border-violet-500/30 rounded-full px-4 py-1.5 cursor-pointer transition-all"
+                        disabled={isPending}
                         onClick={() => {
                           if (!swap) setInput(balance?.toString());
                           else setInput(ktonBalance?.toString());
@@ -933,8 +944,7 @@ const Home = () => {
                   <h1 className="text-violet-200 font-semibold">
                     {exchangeRate
                       ? `1 TON = ${(1 / exchangeRate).toFixed(6)} KTON`
-                      : "Fetching rate..."
-                    }
+                      : "Fetching rate..."}
                   </h1>
                   <div className="flex flex-row gap-1 items-center">
                     <FaGasPump className="text-cyan-400 w-3 h-3 md:w-4 md:h-4" />
@@ -942,6 +952,17 @@ const Home = () => {
                     <MdKeyboardArrowDown className="text-violet-200 cursor-pointer w-5 h-5" />
                   </div>
                 </div>
+
+                {txState.status === "success" && (
+                  <p className="mt-2 text-xs text-emerald-400 font-semibold">
+                    ✓ Transaction sent — balances updating…
+                  </p>
+                )}
+                {txState.status === "error" && (
+                  <p className="mt-2 text-xs text-red-400 font-semibold">
+                    ✗ {txState.error}
+                  </p>
+                )}
 
                 {tonConnectUI.connected && (
                   <button
@@ -960,10 +981,10 @@ const Home = () => {
                               error: (err) => `${err.toString()}`,
                             })
                     }
-                    disabled={txStatus === "pending"}
+                    disabled={isPending}
                     className="mt-4 w-full max-w-[19rem] md:max-w-[35rem] h-11 rounded-full font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-500 hover:from-violet-500 hover:to-blue-400 hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-violet-500/25"
                   >
-                    {txStatus === "pending"
+                    {isPending
                       ? " Processing..."
                       : swap
                         ? "Unstake KTON"
@@ -978,7 +999,7 @@ const Home = () => {
         <div className="w-full max-w-[19rem] md:max-w-[35rem] bg-white/5 backdrop-blur-[20px] flex flex-col gap-3 rounded-2xl mt-6 border border-pink-500/25 hover:border-pink-400/50 p-4 transition-colors duration-300">
           <div className="flex justify-between items-start">
             <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Upcoming rewards
+              Upcoming Rewards
             </h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
@@ -992,7 +1013,7 @@ const Home = () => {
 
           <div className="flex justify-between items-start">
             <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Monthly (Est.)
+              Monthly Est
             </h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
@@ -1003,7 +1024,7 @@ const Home = () => {
           </div>
 
           <div className="flex justify-between items-start">
-            <h1 className="text-violet-200 font-semibold">Yearly (Est.)</h1>
+            <h1 className="text-violet-200 font-semibold">Yearly Est</h1>
             <div className="flex flex-col items-end">
               <h1 className="text-lg md:text-xl font-semibold text-white">
                 3.6932 TON
@@ -1026,7 +1047,7 @@ const Home = () => {
 
         <div className="flex justify-center flex-col gap-2 items-center w-full max-w-[19rem] md:max-w-[35rem] mt-6">
           <div className="flex flex-col md:flex-row gap-2 items-center">
-            <h1 className="text-violet-300 font-semibold">Audited by</h1>
+            <h1 className="text-violet-300 font-semibold">Audited By</h1>
             <PiLockKeyOpenFill className="w-6 h-6 md:w-8 md:h-8 text-cyan-400" />
             <div className="text-white font-bold">
               Ton <span className="text-violet-300 font-normal">Bit</span>
