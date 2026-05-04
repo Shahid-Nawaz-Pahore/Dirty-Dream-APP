@@ -702,6 +702,7 @@ const Home = () => {
                           <p className="text-white font-bold text-sm">
                             {balance}
                           </p>
+                          {/* balance  */}
                         </div>
                       )}
                       {ktonBalance && (
@@ -720,6 +721,7 @@ const Home = () => {
                           </p>
                           <p className="text-white font-bold text-sm">
                             {ktonBalance}
+                            {/* kton balance  */}
                           </p>
                         </div>
                       )}
