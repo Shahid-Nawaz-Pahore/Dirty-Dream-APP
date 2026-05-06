@@ -1,224 +1,218 @@
-import React, { useRef } from "react";
-
-import { BiWalletAlt } from "react-icons/bi";
-import { LuArrowDownUp } from "react-icons/lu";
-import { FaGasPump } from "react-icons/fa";
-import { MdKeyboardArrowDown, MdKeyboardArrowUp } from "react-icons/md";
-import { IoIosFlower } from "react-icons/io";
-import { IoInformationCircleOutline } from "react-icons/io5";
-import { PiLockKeyOpenFill } from "react-icons/pi";
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
-import { TonClient, Address, beginCell, toNano } from "ton";
-import { PiWalletFill } from "react-icons/pi";
-import { MINTER_ADDRESS, POOL_ADDRESS } from "../config";
-import toast from "react-hot-toast";
-import { useNavigate } from "react-router";
-
+import { TonClient4 } from "@ton/ton";
+import { Address, beginCell, TupleBuilder } from "@ton/core";
 import { z } from "zod";
+import toast from "react-hot-toast";
 
-// ─── Zod Schemas ─────────────────────────────────────────────────────────────
+import Nav from "../components/Nav.jsx";
+import Stakecard from "../components/Stakecard.jsx";
+import Infocards from "../components/Infocards.jsx";
+import { MINTER_ADDRESS, POOL_ADDRESS } from "../config.js";
 
-const BalanceApiSchema = z.object({
-  ok: z.boolean(),
-  result: z.string().optional(),
-});
+// ─── Free public endpoints — no API key needed ────────────────────────────────
+const V4_ENDPOINTS = {
+  mainnet: "https://mainnet-v4.tonhubapi.com",
+  testnet: "https://testnet-v4.tonhubapi.com",
+};
 
-const PoolDataSchema = z.object({
-  result: z.object({
-    stack: z.array(z.array(z.unknown())).min(3),
-  }),
-});
-
-const MinterDataSchema = z.object({
-  result: z.object({
-    stack: z.array(z.array(z.unknown())).min(1),
-  }),
-});
-
-const StakeInputSchema = z
-  .object({
-    input: z
-      .union([z.string(), z.number()])
-      .transform((v) => Number(v))
-      .pipe(z.number().positive("Amount must be greater than 0")),
-    balance: z.number(),
-    connected: z.literal(true, {
-      errorMap: () => ({ message: "Connect wallet first" }),
-    }),
-  })
-  .refine((d) => d.input <= d.balance, {
-    message: "Amount exceeds available balance",
-    path: ["input"],
-  });
-
-const UnstakeInputSchema = z
-  .object({
-    input: z
-      .union([z.string(), z.number()])
-      .transform((v) => Number(v))
-      .pipe(z.number().positive("Amount must be greater than 0")),
-    ktonBalance: z.number(),
-    connected: z.literal(true, {
-      errorMap: () => ({ message: "Connect wallet first" }),
-    }),
-  })
-  .refine((d) => d.input <= d.ktonBalance, {
-    message: "Amount exceeds available KTON balance",
-    path: ["input"],
-  });
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const POLL_ATTEMPTS = 5;
-const POLL_INTERVAL_MS = 3000;
-const initialTxState = { status: "idle", error: null }; // status: idle | pending | success | error
+// ─── Validate contract addresses at module load ───────────────────────────────
+try {
+  Address.parse(POOL_ADDRESS);
+  Address.parse(MINTER_ADDRESS);
+} catch {
+  throw new Error("[config] POOL_ADDRESS or MINTER_ADDRESS is invalid.");
+}
 
 const Home = () => {
-  const [swap, setSwap] = useState(false);
   const [tonConnectUI] = useTonConnectUI();
-  const [balance, setBalance] = useState(null);
-  const [ktonBalance, setKtonBalance] = useState(0);
-  const [displayAddress, setDisplayAddress] = useState(null);
-  const [network, setNetwork] = useState("testnet");
-  const [showDisconnect, setShowDisconnect] = useState(false);
-  const [input, setInput] = useState(0);
-  const [txState, setTxState] = useState(initialTxState); // replaces txStatus string
-  const navigate = useNavigate();
-  const [copied, setCopied] = useState(false);
 
-  // Guards
-  const exchangeRef = useRef(false);
-  const isFetchingKton = useRef(false);
-  const networkRef = useRef(network); // stable ref for async closures
+  const [balance, setBalance] = useState(null);
+  const [ktonBalance, setKtonBalance] = useState(null);
+  const [displayAddress, setDisplayAddress] = useState(null);
+  const [network, setNetwork] = useState("mainnet");
+  const [exchangeRate, setExchangeRate] = useState(null);
+
+  const networkRef = useRef("mainnet");
   const unsubscribeRef = useRef(null);
+  const isFetchingKton = useRef(false);
+  const exchangeFetching = useRef(false);
 
   useEffect(() => {
     networkRef.current = network;
   }, [network]);
 
-  const client = useMemo(() => {
-    try {
-      const endpoint =
-        network === "testnet"
-          ? "https://testnet.toncenter.com/api/v2/jsonRPC"
-          : "https://toncenter.com/api/v2/jsonRPC";
+  // ─── TonClient4: fast, no API key, ~300ms responses ──────────────────────
+  const client = useMemo(
+    () =>
+      new TonClient4({
+        endpoint: V4_ENDPOINTS[network] ?? V4_ENDPOINTS.mainnet,
+        timeout: 15_000,
+      }),
+    [network],
+  );
 
-      return new TonClient({
-        endpoint: endpoint,
-        apiKey: import.meta.env.VITE_API_TON_CLIENT,
-      });
-    } catch (e) {
-      console.error("Failed to initialize TonClient:", e);
-      return null;
-    }
-  }, [network]);
-
-  // ─── Reset on disconnect / network switch ─────────────────────────────────
+  // ─── Reset on disconnect / network switch ────────────────────────────────
   const resetWalletState = useCallback(() => {
     setBalance(null);
-    setKtonBalance(0);
+    setKtonBalance(null);
     setDisplayAddress(null);
-    setTxState(initialTxState);
-    setInput(0);
+    setExchangeRate(null);
+    exchangeFetching.current = false;
+    isFetchingKton.current = false;
   }, []);
 
+  // ─── Helper: latest seqno (TonClient4 requires block number per call) ────
+  const getSeqno = useCallback(async () => {
+    const last = await client.getLastBlock();
+    return last.last.seqno;
+  }, [client]);
+
   // ─── TON balance ──────────────────────────────────────────────────────────
+  // getAccountLite returns { account: { balance: { coins: "1234567890" } } }
+  // coins is a string in nano — divide by 1e9 for TON
   const getTonBalance = useCallback(
-    async (addressObj) => {
-      if (!client || !addressObj) return;
+    async (address) => {
+      if (!address) return;
       try {
-        console.log("Fetching balance for address:", addressObj.toString());
-        const info = await client.getBalance(addressObj);
-        console.log("Balance fetched successfully:", info);
-        setBalance((Number(info) / 1e9).toFixed(2));
-      } catch (balanceError) {
-        console.error("Error fetching balance from TonClient:", balanceError);
-        try {
-          const apiEndpoint =
-            networkRef.current === "testnet"
-              ? "https://testnet.toncenter.com/api/v2/getAddressBalance"
-              : "https://toncenter.com/api/v2/getAddressBalance";
-          const response = await fetch(
-            `${apiEndpoint}?address=${addressObj.toString()}`,
-          );
-          const data = await response.json();
-          const parsed = BalanceApiSchema.parse(data);
-          if (parsed.ok && parsed.result) {
-            console.log("Balance fetched via fallback API:", parsed.result);
-            setBalance((Number(parsed.result) / 1e9).toFixed(2));
-          } else {
-            console.error("Fallback API error:", data);
-            setBalance("Error");
-          }
-        } catch (fallbackError) {
-          console.error("Fallback API also failed:", fallbackError);
-          setBalance("Error");
-        }
+        const seqno = await getSeqno();
+        const account = await client.getAccountLite(seqno, address);
+        const nanoStr = account.account.balance.coins; // string e.g. "12345678900"
+        setBalance((Number(nanoStr) / 1e9).toFixed(2));
+      } catch (e) {
+        console.error("TON balance error:", e.message);
+        setBalance("0.00");
       }
     },
-    [client],
+    [client, getSeqno],
   );
 
   // ─── KTON balance ─────────────────────────────────────────────────────────
+  // TonClient4.runMethod returns:
+  //   { exitCode, result: TupleItem[], reader: TupleReader, ... }
+  //
+  // TupleItem shapes:
+  //   integer  → { type: "int",   value: BigInt }   ← readBigNumber()
+  //   address  → { type: "slice", cell: Cell }       ← readAddress()
+  //   cell     → { type: "cell",  cell: Cell }       ← readCell()
+  //
+  // ALWAYS use reader.readXxx() — never access result[] directly
   const getKtonBalance = useCallback(
     async (addrString) => {
-      if (!client || !addrString || isFetchingKton.current) return;
+      if (!addrString || isFetchingKton.current) return;
       isFetchingKton.current = true;
-      try {
-        console.log("KTON BALANCE FETCH CALLED");
-        console.log("Display Address : ", addrString);
 
+      try {
+        const seqno = await getSeqno();
         const minterAddr = Address.parse(MINTER_ADDRESS);
         const userAddr = Address.parse(addrString);
 
+        // Pass user address as a slice argument using TupleBuilder.writeAddress()
+        // This produces { type: "slice", cell: beginCell().storeAddress(addr).endCell() }
+        const args = new TupleBuilder();
+        args.writeAddress(userAddr);
+
+        // Step 1: get the KTON jetton wallet address for this user
         const walletResult = await client.runMethod(
+          seqno,
           minterAddr,
           "get_wallet_address",
-          [
-            {
-              type: "slice",
-              cell: beginCell().storeAddress(userAddr).endCell(),
-            },
-          ],
+          args.build(),
         );
-        const ktonWalletAddr = walletResult.stack.readAddress();
+        // get_wallet_address returns: [slice(address)]
+        // reader.readAddress() handles: readCell().beginParse().loadAddress()
+        const ktonWalletAddr = walletResult.reader.readAddress();
 
+        // Step 2: get the wallet's balance
         const dataResult = await client.runMethod(
+          seqno,
           ktonWalletAddr,
           "get_wallet_data",
           [],
         );
-        const ktonBal = dataResult.stack.readBigNumber();
-        const formatted = Number(ktonBal) / 1e9;
-        console.log("KTON Balance:", formatted);
-        setKtonBalance(formatted);
+        // get_wallet_data returns: [int(balance), int(something), slice(minterAddr), cell(code)]
+        // First item is the balance as a BigInt
+        const ktonBal = dataResult.reader.readBigNumber();
+        setKtonBalance((Number(ktonBal) / 1e9).toFixed(4));
       } catch (e) {
-        console.log("KTON balance fetch failed (likely 0):", e.message);
+        console.error("KTON balance error:", e.message);
         setKtonBalance("0.0000");
       } finally {
         isFetchingKton.current = false;
       }
     },
-    [client],
+    [client, getSeqno],
   );
 
-  // ─── Post-TX polling — replaces one-shot setTimeout ───────────────────────
-  const pollBalances = useCallback(
-    async (addrString, attempt = 0) => {
-      if (attempt >= POLL_ATTEMPTS) return;
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      const addr = Address.parse(addrString);
-      await Promise.all([getTonBalance(addr), getKtonBalance(addrString)]);
-      pollBalances(addrString, attempt + 1);
+  // ─── Exchange rate ────────────────────────────────────────────────────────
+  // get_pool_full_data stack layout (index → value):
+  //   [0] state, [1] halted, [2] totalBalance ← we need this
+  //
+  // get_jetton_data stack layout:
+  //   [0] totalSupply ← we need this
+  //
+  // rate = totalBalance / totalSupply  (both in nanoTON/nanoKTON — ratio is unitless)
+  const getExchangeRate = useCallback(async () => {
+    if (exchangeFetching.current) return;
+    exchangeFetching.current = true;
+
+    try {
+      const seqno = await getSeqno();
+      const poolAddr = Address.parse(POOL_ADDRESS);
+      const minterAddr = Address.parse(MINTER_ADDRESS);
+
+      const [poolResult, minterResult] = await Promise.all([
+        client.runMethod(seqno, poolAddr, "get_pool_full_data", []),
+        client.runMethod(seqno, minterAddr, "get_jetton_data", []),
+      ]);
+
+      // Skip first two values in pool stack, read third
+      const poolReader = poolResult.reader;
+      poolReader.readBigNumber(); // index 0 — skip
+      poolReader.readBigNumber(); // index 1 — skip
+      const totalBalance = poolReader.readBigNumber(); // index 2
+
+      // First value in minter stack
+      const totalSupply = minterResult.reader.readBigNumber(); // index 0
+
+      if (totalSupply === 0n) throw new Error("Total supply is 0");
+
+      const rate = Number(totalBalance) / Number(totalSupply);
+      setExchangeRate(rate);
+      console.log("Exchange rate:", rate);
+    } catch (e) {
+      console.error("Exchange rate error:", e.message);
+      exchangeFetching.current = false; // allow retry
+    }
+  }, [client, getSeqno]);
+
+  // ─── Combined refresh — passed into StakeCard poller ─────────────────────
+  const handleBalancesRefresh = useCallback(
+    async (addrString) => {
+      await Promise.all([
+        getTonBalance(Address.parse(addrString)),
+        getKtonBalance(addrString),
+      ]);
     },
     [getTonBalance, getKtonBalance],
   );
 
-  // ─── Wallet status change ─────────────────────────────────────────────────
+  // ─── Fetch exchange rate immediately when client is ready ────────────────
   useEffect(() => {
-    if (!client || !tonConnectUI) return;
+    exchangeFetching.current = false;
+    getExchangeRate();
+  }, [client]); // re-runs when network changes → new client
 
-    // Clean up previous subscription before creating a new one
+  // ─── Auto-refresh balances every 60s ─────────────────────────────────────
+  useEffect(() => {
+    if (!displayAddress) return;
+    const id = setInterval(() => handleBalancesRefresh(displayAddress), 60_000);
+    return () => clearInterval(id);
+  }, [displayAddress, handleBalancesRefresh]);
+
+  // ─── Wallet status listener ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!tonConnectUI) return;
     if (unsubscribeRef.current) unsubscribeRef.current();
 
     const unsubscribe = tonConnectUI.onStatusChange(async (wallet) => {
@@ -228,835 +222,71 @@ const Home = () => {
       }
 
       try {
-        const rawAddress = wallet.account.address;
+        // chain "-3" = testnet, "-239" = mainnet — only canonical source
+        const isTestnet = wallet.account.chain === "-3";
+        const newNetwork = isTestnet ? "testnet" : "mainnet";
 
-        let isTestnet = false;
-
-        if (!rawAddress.includes(":")) {
-          if (
-            rawAddress.startsWith("k") ||
-            (rawAddress.startsWith("0") && rawAddress.length > 10)
-          ) {
-            isTestnet = true;
-          }
-        }
-
-        if (wallet.account.chain === "-3") {
-          isTestnet = true;
-        } else if (wallet.account.chain === "-239") {
-          isTestnet = false;
-        }
-
-        // If network changed, reset exchange rate so it re-fetches automatically
-        if (networkRef.current !== (isTestnet ? "testnet" : "mainnet")) {
-          exchangeRef.current = false;
+        if (networkRef.current !== newNetwork) {
           setExchangeRate(null);
+          exchangeFetching.current = false;
         }
+        setNetwork(newNetwork);
 
-        console.log("Raw address:", rawAddress);
-        console.log("Chain:", wallet.account.chain);
-        console.log("Detected as testnet:", isTestnet);
-
-        setNetwork(isTestnet ? "testnet" : "mainnet");
-
+        const raw = wallet.account.address;
         let address;
         try {
-          if (rawAddress.includes(":")) {
-            address = Address.parseRaw(rawAddress);
-          } else {
-            const parsed = Address.parseFriendly(rawAddress);
-            address = parsed.address;
-            isTestnet = parsed.isTestOnly;
-            setNetwork(isTestnet ? "testnet" : "mainnet");
-            console.log("Parsed isTestOnly:", parsed.isTestOnly);
-          }
-
-          const friendlyAddress = address.toString({
-            bounceable: false,
-            testOnly: isTestnet,
-          });
-          setDisplayAddress(friendlyAddress);
-        } catch (e) {
-          console.error("Failed to parse address:", e);
-          setBalance("Invalid Address");
+          address = raw.includes(":")
+            ? Address.parseRaw(raw)
+            : Address.parseFriendly(raw).address;
+        } catch {
+          setBalance("Invalid address");
           return;
         }
 
-        // Fetch both balances concurrently on connect
-        await Promise.all([
-          getTonBalance(address),
-          getKtonBalance(friendlyAddress),
-        ]);
+        const friendly = address.toString({
+          bounceable: false,
+          testOnly: isTestnet,
+        });
+        setDisplayAddress(friendly);
+
+        // Fetch both balances in parallel immediately on connect
+        await Promise.all([getTonBalance(address), getKtonBalance(friendly)]);
       } catch (e) {
-        console.error("Error in wallet status change:", e);
-        if (e instanceof z.ZodError) {
-          toast.error("Wallet returned unexpected data format");
-        }
+        if (e instanceof z.ZodError) toast.error("Wallet data format error.");
         setBalance("Error");
       }
     });
 
     unsubscribeRef.current = unsubscribe;
     return () => unsubscribe();
-  }, [tonConnectUI, client, getTonBalance, getKtonBalance, resetWalletState]);
+  }, [tonConnectUI, getTonBalance, getKtonBalance, resetWalletState]);
 
-  const handleWalletConnect = async () => {
-    try {
-      if (tonConnectUI.connected) {
-        console.log("Wallet already connected");
-        return;
-      }
-      await tonConnectUI.openModal();
-    } catch (error) {
-      console.error("Error connecting wallet:", error);
-    }
-  };
-
-  const handleWalletDisconnect = async () => {
-    try {
-      await tonConnectUI.disconnect();
-    } catch (error) {
-      console.error("Error disconnecting wallet:", error);
-    } finally {
-      // always reset even if disconnect throws
-      setShowDisconnect(false);
-      resetWalletState();
-      setNetwork("mainnet");
-      exchangeRef.current = false;
-    }
-  };
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (showDisconnect && !event.target.closest(".wallet-dropdown")) {
-        setShowDisconnect(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showDisconnect]);
-
-  useEffect(() => {
-    if (client && displayAddress) {
-      getKtonBalance(displayAddress);
-    }
-  }, [client, displayAddress]);
-
-  // ─── Unstake ──────────────────────────────────────────────────────────────
-  const handleUnstake = async () => {
-    // Zod validation replaces manual if-throws
-    const validation = UnstakeInputSchema.safeParse({
-      input,
-      ktonBalance: parseFloat(ktonBalance ?? "0"),
-      connected: tonConnectUI.connected,
-    });
-    if (!validation.success) {
-      throw new Error(validation.error.issues[0].message);
-    }
-
-    try {
-      setTxState({ status: "pending", error: null });
-
-      const minterAddr = Address.parse(MINTER_ADDRESS);
-      const userAddr = Address.parse(displayAddress);
-
-      const walletResult = await client.runMethod(
-        minterAddr,
-        "get_wallet_address",
-        [{ type: "slice", cell: beginCell().storeAddress(userAddr).endCell() }],
-      );
-      const ktonWalletAddr = walletResult.stack.readAddress();
-
-      const waitTillRoundEnd = false;
-      const fillOrKill = false;
-
-      const burnBody = beginCell()
-        .storeUint(0x595f07bc, 32)
-        .storeUint(0, 64)
-        .storeCoins(toNano(input))
-        .storeAddress(userAddr)
-        .storeBit(waitTillRoundEnd)
-        .storeBit(fillOrKill)
-        .endCell();
-
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 300,
-        messages: [
-          {
-            address: ktonWalletAddr.toString({
-              bounceable: true,
-              testOnly: network === "testnet",
-            }),
-            amount: toNano("1").toString(),
-            payload: burnBody.toBoc().toString("base64"),
-          },
-        ],
-      });
-
-      setTxState({ status: "success", error: null });
-      console.log("✅ Unstake sent!");
-      pollBalances(displayAddress); // replaces setTimeout one-shot
-      return true;
-    } catch (e) {
-      console.error("❌ Unstake failed:", e);
-      const msg = e?.message ?? "Unstake failed";
-      setTxState({ status: "error", error: msg });
-      throw new Error(msg);
-    }
-  };
-
-  // ─── Stake ────────────────────────────────────────────────────────────────
-  const handleStake = async () => {
-    // Zod validation replaces manual if-throws
-    const validation = StakeInputSchema.safeParse({
-      input,
-      balance: parseFloat(balance ?? "0"),
-      connected: tonConnectUI.connected,
-    });
-    if (!validation.success) {
-      throw new Error(validation.error.issues[0].message);
-    }
-
-    setTxState({ status: "pending", error: null });
-
-    const body = beginCell()
-      .storeUint(0x47d54391, 32)
-      .storeUint(0, 64)
-      .endCell();
-
-    const transaction = {
-      validUntil: Math.floor(Date.now() / 1000) + 300,
-      messages: [
-        {
-          address: POOL_ADDRESS,
-          amount: (toNano(input) + toNano("1")).toString(),
-          payload: body.toBoc().toString("base64"),
-        },
-      ],
-    };
-
-    try {
-      await tonConnectUI.sendTransaction(transaction);
-      console.log("Stake tx sent!");
-      setTxState({ status: "success", error: null });
-      pollBalances(displayAddress); // replaces setTimeout one-shot
-      return true;
-    } catch (e) {
-      const msg = e?.message ?? "Stake failed";
-      console.log("Stake failed:", msg);
-      setTxState({ status: "error", error: msg });
-      throw new Error(msg);
-    }
-  };
-
-  const [exchangeRate, setExchangeRate] = useState(null);
-  const exchangeRateRef = useRef(null); // keep exchangeRef alias working
-
-  const getExchangeRate = useCallback(async () => {
-    try {
-      if (exchangeRef.current == true) return;
-      exchangeRef.current = true;
-
-      const endpoint =
-        networkRef.current === "testnet"
-          ? "https://testnet.toncenter.com/api/v2"
-          : "https://toncenter.com/api/v2";
-
-      const [poolRes, minterRes] = await Promise.all([
-        fetch(`${endpoint}/runGetMethod`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            address: POOL_ADDRESS,
-            method: "get_pool_full_data",
-            stack: [],
-          }),
-        }),
-        fetch(`${endpoint}/runGetMethod`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            address: MINTER_ADDRESS,
-            method: "get_jetton_data",
-            stack: [],
-          }),
-        }),
-      ]);
-
-      // Zod validates contract response shape before accessing indices
-      const poolData = PoolDataSchema.parse(await poolRes.json());
-      const minterData = MinterDataSchema.parse(await minterRes.json());
-
-      console.log("Pool stack:", poolData.result.stack);
-      console.log("Minter stack:", minterData.result.stack);
-
-      const totalBalance = BigInt(poolData.result.stack[2][1]);
-      const totalSupply = BigInt(minterData.result.stack[0][1]);
-
-      console.log("Total TON in pool:", Number(totalBalance) / 1e9);
-      console.log("Total KTON supply:", Number(totalSupply) / 1e9);
-
-      if (totalSupply === 0n) throw new Error("Total supply is 0");
-
-      const rate = Number(totalBalance) / Number(totalSupply);
-      console.log("✅ Exchange rate (TON per KTON):", rate);
-      setExchangeRate(rate);
-      return rate;
-    } catch (e) {
-      console.error("Failed to fetch exchange rate:", e);
-      exchangeRef.current = false; // allow retry on failure
-      return null;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (client && exchangeRate == null) {
-      getExchangeRate();
-    }
-  }, [client, exchangeRate, getExchangeRate]);
-
-  const receiveAmount = useMemo(() => {
-    if (!input || Number(input) <= 0 || !exchangeRate) return "0";
-
-    if (swap) {
-      return (Number(input) * exchangeRate).toFixed(2);
-    } else {
-      return (Number(input) / exchangeRate).toFixed(2);
-    }
-  }, [input, swap, exchangeRate]);
-
-  const isPending = txState.status === "pending";
+  // ─── Disconnect ───────────────────────────────────────────────────────────
+  const handleDisconnect = useCallback(() => {
+    resetWalletState();
+    setNetwork("mainnet");
+  }, [resetWalletState]);
 
   return (
     <div className="min-h-screen">
-      <div className="py-4 px-4 fixed w-full z-3 px-6 flex items-center justify-between">
-        <div className="flex justify-start gap-3">
-          <div>
-            <img
-              onClick={() =>
-                window.open("https://dirty-dream.vercel.app/", "_blank")
-              }
-              src="/Logo.svg"
-              alt="logo"
-              className="size-10 rotate-0 hover:rotate-360 transform duration-500 cursor-pointer"
-            />
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition">
-          <PiWalletFill className="text-white w-6 h-6" />
-
-          {!tonConnectUI.connected ? (
-            <button
-              onClick={handleWalletConnect}
-              className="text-white font-semibold text-md cursor-pointer"
-            >
-              Connect wallet
-            </button>
-          ) : (
-            <div className="wallet-dropdown">
-              <button
-                onClick={() => setShowDisconnect(!showDisconnect)}
-                className="text-white font-semibold text-sm font-mono flex items-center gap-1 cursor-pointer"
-              >
-                {displayAddress
-                  ? `${displayAddress.slice(0, 4)}...${displayAddress.slice(-3)}`
-                  : tonConnectUI.wallet?.account?.address
-                    ? `${tonConnectUI.wallet.account.address.slice(0, 4)}...${tonConnectUI.wallet.account.address.slice(-3)}`
-                    : "Connected"}
-                {network === "testnet" && <span className="text-xs"></span>}
-              </button>
-
-              {showDisconnect && (
-                <div
-                  className="absolute top-full right-0 mt-2 z-50 w-64"
-                  style={{
-                    background: "linear-gradient(145deg, #13102a, #0e0b22)",
-                    border: "1px solid rgba(139,92,246,0.35)",
-                    borderRadius: 16,
-                    boxShadow:
-                      "0 0 0 1px rgba(139,92,246,0.08), 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(99,0,255,0.08)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    className="flex items-center gap-3 px-4 py-3"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(99,0,255,0.12), rgba(236,72,153,0.06))",
-                      borderBottom: "1px solid rgba(139,92,246,0.15)",
-                    }}
-                  >
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm text-white"
-                      style={{
-                        background: "linear-gradient(135deg, #7c3aed, #2563eb)",
-                      }}
-                    >
-                      W
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="text-[10px] uppercase tracking-widest mb-0.5"
-                        style={{ color: "rgba(167,139,250,0.7)" }}
-                      >
-                        Connected
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-white text-xs font-mono truncate">
-                          {displayAddress ||
-                            tonConnectUI.wallet?.account?.address ||
-                            "N/A"}
-                        </p>
-                        <button
-                          onClick={() => {
-                            const addr =
-                              displayAddress ||
-                              tonConnectUI.wallet?.account?.address;
-                            if (addr) {
-                              navigator.clipboard.writeText(addr);
-                              setCopied(true);
-                              setTimeout(() => setCopied(false), 2000);
-                            }
-                          }}
-                          className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded transition-all duration-200"
-                          style={{
-                            background: copied
-                              ? "rgba(52,211,153,0.15)"
-                              : "rgba(139,92,246,0.12)",
-                            border: `1px solid ${copied ? "rgba(52,211,153,0.35)" : "rgba(139,92,246,0.25)"}`,
-                            color: copied ? "#34d399" : "rgba(167,139,250,0.8)",
-                          }}
-                        >
-                          {copied ? (
-                            <svg
-                              width="10"
-                              height="10"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          ) : (
-                            <svg
-                              width="10"
-                              height="10"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect
-                                x="9"
-                                y="9"
-                                width="13"
-                                height="13"
-                                rx="2"
-                                ry="2"
-                              />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{
-                        background: "#34d399",
-                        boxShadow: "0 0 6px #34d399",
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2.5 p-3">
-                    {network === "testnet" && (
-                      <div
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                        style={{
-                          background: "rgba(234,179,8,0.1)",
-                          border: "1px solid rgba(234,179,8,0.25)",
-                        }}
-                      >
-                        <div className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-                        <span className="text-yellow-300 text-xs font-semibold">
-                          Testnet network
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      {balance && (
-                        <div
-                          className="flex-1 rounded-xl p-2.5"
-                          style={{
-                            background: "rgba(139,92,246,0.08)",
-                            border: "1px solid rgba(139,92,246,0.18)",
-                          }}
-                        >
-                          <p
-                            className="text-[10px] uppercase tracking-wider mb-1"
-                            style={{ color: "rgba(167,139,250,0.65)" }}
-                          >
-                            TON
-                          </p>
-                          <p className="text-white font-bold text-sm">
-                            {balance}
-                          </p>
-                        </div>
-                      )}
-                      {ktonBalance && (
-                        <div
-                          className="flex-1 rounded-xl p-2.5"
-                          style={{
-                            background: "rgba(6,182,212,0.08)",
-                            border: "1px solid rgba(6,182,212,0.18)",
-                          }}
-                        >
-                          <p
-                            className="text-[10px] uppercase tracking-wider mb-1"
-                            style={{ color: "rgba(34,211,238,0.65)" }}
-                          >
-                            K-TON
-                          </p>
-                          <p className="text-white font-bold text-sm">
-                            {ktonBalance}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div
-                      style={{ height: 1, background: "rgba(139,92,246,0.12)" }}
-                    />
-
-                    <button
-                      onClick={handleWalletDisconnect}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200"
-                      style={{
-                        background: "rgba(239,68,68,0.1)",
-                        border: "1px solid rgba(239,68,68,0.25)",
-                        color: "#fca5a5",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background =
-                          "rgba(239,68,68,0.2)";
-                        e.currentTarget.style.borderColor =
-                          "rgba(239,68,68,0.45)";
-                        e.currentTarget.style.color = "white";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background =
-                          "rgba(239,68,68,0.1)";
-                        e.currentTarget.style.borderColor =
-                          "rgba(239,68,68,0.25)";
-                        e.currentTarget.style.color = "#fca5a5";
-                      }}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                        <polyline points="16 17 21 12 16 7" />
-                        <line x1="21" y1="12" x2="9" y2="12" />
-                      </svg>
-                      Disconnect wallet
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
+      <Nav
+        displayAddress={displayAddress}
+        balance={balance}
+        ktonBalance={ktonBalance}
+        network={network}
+        onDisconnect={handleDisconnect}
+      />
       <div className="flex justify-center items-center flex-col px-4 pb-6 pt-14">
-        <div className="bg-white/5 backdrop-blur-[20px] border border-violet-500/20 w-full max-w-[19rem] md:max-w-[35rem] mt-6 md:mt-10 h-12 flex flex-row justify-center items-center rounded-3xl p-1">
-          <button
-            onClick={() => {
-              setSwap((prev) => !prev);
-              setInput(0);
-            }}
-            className={`${!swap ? "bg-gradient-to-r from-violet-600/60 to-blue-500/60 backdrop-blur-[20px] shadow-lg shadow-violet-500/20" : "bg-white/5"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all pointer-events-auto`}
-          >
-            Stake
-          </button>
-          <button
-            onClick={() => {
-              setSwap((prev) => !prev);
-              setInput(0);
-            }}
-            className={`${swap ? "bg-gradient-to-r from-pink-600/60 to-violet-500/60 backdrop-blur-[20px] shadow-lg shadow-pink-500/20" : "bg-white/5"} text-white font-bold text-md md:text-md flex justify-center items-center w-1/2 cursor-pointer h-10 rounded-3xl transition-all pointer-events-auto`}
-          >
-            UnStake
-          </button>
-        </div>
-
-        <div className="border-wrapper w-full rounded-2xl mt-6 border border-violet-500/30 hover:border-violet-400/70 max-w-[19rem] md:max-w-[35rem] transition-colors duration-300">
-          <div className="border-rotating">
-            <div className="flex flex-col gap-2 items-center justify-center bg-white/5 backdrop-blur-[20px] rounded-2xl content p-4">
-              <div className="w-full">
-                <div className="flex justify-between w-full mb-2">
-                  <h1 className="text-sm md:text-md text-violet-200 font-semibold">
-                    Amount
-                  </h1>
-                  <div className="flex flex-row gap-1 items-center">
-                    <BiWalletAlt className="text-violet-300 w-5 h-5 md:w-6 md:h-6" />
-                    <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-                      -
-                    </h1>
-                    <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-                      TON
-                    </h1>
-                  </div>
-                </div>
-
-                <div className="flex justify-between w-full items-center">
-                  <input
-                    placeholder={`${swap ? "0" : "100"}`}
-                    type="number"
-                    className="text-2xl md:text-3xl font-bold bg-transparent border-none outline-none text-white w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    value={input}
-                    onChange={(e) => {
-                      setInput(e.target.value);
-                      // clear stale tx feedback when user types a new amount
-                      if (txState.status !== "idle") setTxState(initialTxState);
-                    }}
-                    disabled={isPending}
-                  />
-                  <div className="flex flex-row justify-center items-center gap-1 md:gap-2 items-center flex-shrink-0">
-                    <div className="flex justify-end items-end w-full mt-1">
-                      <button
-                        className="text-sm md:text-md font-semibold text-violet-200 hover:text-white bg-violet-500/20 hover:bg-violet-500/40 border border-violet-500/30 rounded-full px-4 py-1.5 cursor-pointer transition-all"
-                        disabled={isPending}
-                        onClick={() => {
-                          if (!swap) setInput(balance?.toString());
-                          else setInput(ktonBalance?.toString());
-                        }}
-                      >
-                        Max
-                      </button>
-                    </div>
-                    <h1 className="text-2xl md:text-3xl text-white font-semibold">
-                      {swap ? "KTON" : "TON"}
-                    </h1>
-                    <div className="flex items-center justify-center">
-                      {swap ? (
-                        <img src="/Logo.svg" className="w-22 rounded-full" />
-                      ) : (
-                        <svg
-                          width="32"
-                          height="32"
-                          viewBox="0 0 40 40"
-                          className="md:w-10 md:h-10"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <g clipPath="url(#clip0_5041_15082)">
-                            <path
-                              d="M20 40C31.0714 40 40 31.0714 40 20C40 8.92857 31.0714 0 20 0C8.92857 0 0 8.92857 0 20C0 31.0714 8.92857 40 20 40Z"
-                              fill="#0098EA"
-                            />
-                            <path
-                              d="M26.8573 11.1426H13.143C10.643 11.1426 9.07157 13.8569 10.2859 16.0711L18.7144 30.714C19.2859 31.6426 20.643 31.6426 21.2144 30.714L29.643 16.0711C30.9287 13.8569 29.3573 11.1426 26.8573 11.1426ZM18.7859 26.2854L16.9287 22.714L12.5001 14.7854C12.2144 14.2854 12.5716 13.6426 13.2144 13.6426H18.7859V26.2854ZM27.5001 14.7854L23.0716 22.714L21.2144 26.2854V13.6426H26.7859C27.4287 13.6426 27.7859 14.2854 27.5001 14.7854Z"
-                              fill="white"
-                            />
-                          </g>
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="w-full flex flex-row justify-center items-center gap-2">
-                <div className="border-t border-violet-500/30 h-1 flex-1"></div>
-                <div className="w-10 h-10 hover:bg-violet-500/40 rounded-2xl bg-violet-500/20 border border-violet-500/30 flex justify-center items-center cursor-pointer transition-all">
-                  <LuArrowDownUp
-                    onClick={() => setSwap((prev) => !prev)}
-                    className="w-5 h-5 text-violet-200 hover:rotate-180 transition-transform font-semibold"
-                  />
-                </div>
-                <div className="border-t border-violet-500/30 h-1 flex-1"></div>
-              </div>
-
-              <div className="w-full">
-                <div className="flex justify-start items-start w-full mb-2">
-                  <h1 className="text-sm md:text-md text-violet-200">
-                    Receive
-                  </h1>
-                </div>
-
-                <div className="flex justify-between w-full items-center">
-                  <input
-                    placeholder={`${swap ? "100" : "0"}`}
-                    type="number"
-                    value={receiveAmount}
-                    readOnly
-                    className="text-2xl md:text-3xl font-bold bg-transparent border-none outline-none text-white w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <div className="flex flex-row gap-1 md:gap-2 items-center flex-shrink-0">
-                    <h1 className="text-2xl md:text-3xl text-white font-semibold">
-                      {swap ? "TON" : "KTON"}
-                    </h1>
-                    <div className="flex items-center justify-center">
-                      {swap ? (
-                        <svg
-                          width="32"
-                          height="32"
-                          viewBox="0 0 40 40"
-                          className="md:w-10 md:h-10"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <g clipPath="url(#clip0_5041_15082)">
-                            <path
-                              d="M20 40C31.0714 40 40 31.0714 40 20C40 8.92857 31.0714 0 20 0C8.92857 0 0 8.92857 0 20C0 31.0714 8.92857 40 20 40Z"
-                              fill="#0098EA"
-                            />
-                            <path
-                              d="M26.8573 11.1426H13.143C10.643 11.1426 9.07157 13.8569 10.2859 16.0711L18.7144 30.714C19.2859 31.6426 20.643 31.6426 21.2144 30.714L29.643 16.0711C30.9287 13.8569 29.3573 11.1426 26.8573 11.1426ZM18.7859 26.2854L16.9287 22.714L12.5001 14.7854C12.2144 14.2854 12.5716 13.6426 13.2144 13.6426H18.7859V26.2854ZM27.5001 14.7854L23.0716 22.714L21.2144 26.2854V13.6426H26.7859C27.4287 13.6426 27.7859 14.2854 27.5001 14.7854Z"
-                              fill="white"
-                            />
-                          </g>
-                        </svg>
-                      ) : (
-                        <img src="/Logo.svg" className="w-10 rounded-full" />
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between w-full mt-4 text-xs md:text-sm">
-                  <h1 className="text-violet-200 font-semibold">
-                    {exchangeRate
-                      ? `1 TON = ${(1 / exchangeRate).toFixed(6)} KTON`
-                      : "Fetching rate..."}
-                  </h1>
-                  <div className="flex flex-row gap-1 items-center">
-                    <FaGasPump className="text-cyan-400 w-3 h-3 md:w-4 md:h-4" />
-                    <h1 className="text-violet-200">0.15 ~ 1.15</h1>
-                    <MdKeyboardArrowDown className="text-violet-200 cursor-pointer w-5 h-5" />
-                  </div>
-                </div>
-
-                {txState.status === "success" && (
-                  <p className="mt-2 text-xs text-emerald-400 font-semibold">
-                    ✓ Transaction sent — balances updating…
-                  </p>
-                )}
-                {txState.status === "error" && (
-                  <p className="mt-2 text-xs text-red-400 font-semibold">
-                    ✗ {txState.error}
-                  </p>
-                )}
-
-                {tonConnectUI.connected && (
-                  <button
-                    onClick={
-                      swap
-                        ? () =>
-                            toast.promise(handleUnstake(), {
-                              loading: "Loading",
-                              success: () => `Unstaked Successfully!!!`,
-                              error: (err) => `${err.toString()}`,
-                            })
-                        : () =>
-                            toast.promise(handleStake(), {
-                              loading: "Loading",
-                              success: () => `Staked Successfully!!!`,
-                              error: (err) => `${err.toString()}`,
-                            })
-                    }
-                    disabled={isPending}
-                    className="mt-4 w-full max-w-[19rem] md:max-w-[35rem] h-11 rounded-full font-semibold text-white bg-gradient-to-r from-violet-600 to-blue-500 hover:from-violet-500 hover:to-blue-400 hover:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-violet-500/25"
-                  >
-                    {isPending
-                      ? " Processing..."
-                      : swap
-                        ? "Unstake KTON"
-                        : "Stake TON"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full max-w-[19rem] md:max-w-[35rem] bg-white/5 backdrop-blur-[20px] flex flex-col gap-3 rounded-2xl mt-6 border border-pink-500/25 hover:border-pink-400/50 p-4 transition-colors duration-300">
-          <div className="flex justify-between items-start">
-            <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Upcoming Rewards
-            </h1>
-            <div className="flex flex-col items-end">
-              <h1 className="text-lg md:text-xl font-semibold text-white">
-                0.0080 TON
-              </h1>
-              <h1 className="text-violet-300 text-xs md:text-sm">
-                (2026-01-19 08:34)
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-start">
-            <h1 className="text-violet-200 font-semibold text-sm md:text-base">
-              Monthly Est
-            </h1>
-            <div className="flex flex-col items-end">
-              <h1 className="text-lg md:text-xl font-semibold text-white">
-                0.3077 TON
-              </h1>
-              <h1 className="text-cyan-400 text-xs md:text-sm">~$0.49</h1>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-start">
-            <h1 className="text-violet-200 font-semibold">Yearly Est</h1>
-            <div className="flex flex-col items-end">
-              <h1 className="text-lg md:text-xl font-semibold text-white">
-                3.6932 TON
-              </h1>
-              <h1 className="text-cyan-400 text-xs md:text-sm">~$5.88</h1>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full max-w-[19rem] md:max-w-[35rem] rounded-2xl mt-4 border border-cyan-500/25 hover:border-cyan-400/50 bg-white/5 backdrop-blur-[20px] flex flex-row justify-between items-center p-4 transition-colors duration-300">
-          <div className="flex flex-row gap-2 items-center">
-            <IoIosFlower className="w-6 h-6 md:w-8 md:h-8 text-pink-400" />
-            <h1 className="text-white text-xl md:text-2xl">APY</h1>
-            <IoInformationCircleOutline className="w-4 h-4 md:w-5 md:h-5 text-violet-300" />
-          </div>
-          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
-            5.31%
-          </h1>
-        </div>
-
-        <div className="flex justify-center flex-col gap-2 items-center w-full max-w-[19rem] md:max-w-[35rem] mt-6">
-          <div className="flex flex-col md:flex-row gap-2 items-center">
-            <h1 className="text-violet-300 font-semibold">Audited By</h1>
-            <PiLockKeyOpenFill className="w-6 h-6 md:w-8 md:h-8 text-cyan-400" />
-            <div className="text-white font-bold">
-              Ton <span className="text-violet-300 font-normal">Bit</span>
-            </div>
-            <h1 className="font-semibold text-violet-300">
-              TON Foundation-endorsed
-            </h1>
-          </div>
-        </div>
+        <Stakecard
+          client={client}
+          displayAddress={displayAddress}
+          balance={balance}
+          ktonBalance={ktonBalance}
+          network={network}
+          exchangeRate={exchangeRate}
+          onBalancesRefresh={handleBalancesRefresh}
+        />
+        <Infocards />
       </div>
     </div>
   );
