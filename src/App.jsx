@@ -121,10 +121,10 @@ const App = () => {
 
   return (
     <TonConnectUIProvider
-      manifestUrl="https://staking-app-lovat.vercel.app/tonconnect-manifest.json"
+      manifestUrl="https://dirty-dreamapp.vercel.app/tonconnect-manifest.json"
       actionsConfiguration={{
         returnStrategy: "back",
-        twaReturnUrl: "https://staking-app-lovat.vercel.app",
+        twaReturnUrl: "https://dirty-dreamapp.vercel.app",
       }}
     >
       <div
