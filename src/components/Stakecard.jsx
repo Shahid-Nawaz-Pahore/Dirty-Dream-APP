@@ -134,6 +134,15 @@ const Stakecard = ({
     [onBalancesRefresh],
   );
 
+  const [errorPopup, setErrorPopup] = useState(null);
+  const showErrorPopup = (message) => {
+    setErrorPopup({ message });
+
+    setTimeout(() => {
+      setErrorPopup(null);
+    }, 10000); // 10 sec
+  };
+
   // ─── Stake ────────────────────────────────────────────────────────────────
   const handleStake = async () => {
     if (!client) throw new Error("Wallet client is not ready.");
@@ -143,8 +152,12 @@ const Stakecard = ({
       balance: parseFloat(balance ?? "0"),
       connected: tonConnectUI.connected,
     });
-    if (!validation.success)
-      throw new Error(validation.error.issues[0].message);
+
+    if (!validation.success) {
+      const msg = validation.error.issues[0].message;
+      showErrorPopup(msg);
+      throw new Error(msg);
+    }
 
     // Clamp before toNano to prevent BigInt overflow
     const safeAmount = Math.min(Math.max(parseFloat(input), 0), MAX_STAKE);
@@ -175,7 +188,8 @@ const Stakecard = ({
     } catch (e) {
       const msg = toFriendlyError(e?.message);
       setTxState({ status: "error", error: msg });
-      throw new Error(msg);
+      showErrorPopup(msg);
+      return;
     }
   };
 
@@ -188,29 +202,64 @@ const Stakecard = ({
       ktonBalance: parseFloat(ktonBalance ?? "0"),
       connected: tonConnectUI.connected,
     });
-    if (!validation.success)
-      throw new Error(validation.error.issues[0].message);
+
+    if (!validation.success) {
+      const msg = validation.error.issues[0].message;
+
+      setTxState({
+        status: "error",
+        error: msg,
+      });
+
+      showErrorPopup(msg);
+
+      throw new Error(msg);
+    }
 
     const safeAmount = Math.min(Math.max(parseFloat(input), 0), MAX_STAKE);
 
-    setTxState({ status: "pending", error: null });
+    setTxState({
+      status: "pending",
+      error: null,
+    });
+
+
 
     try {
+      console.log("STEP 1");
+
       const minterAddr = Address.parse(MINTER_ADDRESS);
+      console.log(minterAddr);
+
+      console.log("STEP 2");
+
       const userAddr = Address.parse(displayAddress);
 
-      const userCell = beginCell().storeAddress(userAddr).endCell();
+      console.log("STEP 3");
 
-      const walletResult = await client.runMethod(
-        minterAddr,
-        "get_wallet_address",
-        [
-          {
-            type: "slice",
-            cell: userCell.toBoc().toString("base64"),
-          },
-        ],
-      );
+      // TEST CONTRACT
+      const jettonData = await client.runMethod(minterAddr, "get_jetton_data");
+
+      console.log("JETTON DATA:", jettonData);
+
+      // const userCell = beginCell().storeAddress(userAddr).endCell();
+
+      console.log("STEP 4");
+
+
+
+      const userCell = beginCell()
+  .storeAddress(userAddr)
+  .endCell();
+
+const walletResult = await client.runMethod(
+  minterAddr,
+  "get_wallet_address",
+  userCell.toBoc()
+);
+      console.log("STEP 5", walletResult);
+
+
       const ktonWalletAddr = walletResult.stack.readAddress();
 
       const burnBody = beginCell()
@@ -236,13 +285,28 @@ const Stakecard = ({
         ],
       });
 
-      setTxState({ status: "success", error: null });
+      setTxState({
+        status: "success",
+        error: null,
+      });
+
       scheduleDismiss();
+
       pollBalances(displayAddress);
+
       return true;
     } catch (e) {
-      const msg = toFriendlyError(e?.message);
-      setTxState({ status: "error", error: msg });
+      console.error("UNSTAKE ERROR:", e);
+
+      const msg = toFriendlyError(e?.message || "Unstake failed");
+
+      setTxState({
+        status: "error",
+        error: msg,
+      });
+
+      showErrorPopup(msg);
+
       throw new Error(msg);
     }
   };
@@ -324,8 +388,8 @@ const Stakecard = ({
                         ? ktonBalance
                         : "—"
                       : balance !== null
-                        ? balance
-                        : "—"}
+                      ? balance
+                      : "—"}
                   </span>
                   <span className="text-violet-200 font-semibold text-sm md:text-base">
                     {swap ? "KTON" : "TON"}
@@ -449,13 +513,13 @@ const Stakecard = ({
                       ? () =>
                           toast.promise(handleUnstake(), {
                             loading: "Sending transaction…",
-                            success: "Unstaked successfully!",
+                            // success: "Unstaked successfully!",
                             error: (err) => err.message,
                           })
                       : () =>
                           toast.promise(handleStake(), {
                             loading: "Sending transaction…",
-                            success: "Staked successfully!",
+                            // success: "Staked successfully!",
                             error: (err) => err.message,
                           })
                     : undefined
@@ -475,15 +539,40 @@ const Stakecard = ({
                 {!tonConnectUI.connected
                   ? "Connect wallet to stake"
                   : isPending
-                    ? "Processing…"
-                    : swap
-                      ? "Unstake KTON"
-                      : "Stake TON"}
+                  ? "Processing…"
+                  : swap
+                  ? "Unstake KTON"
+                  : "Stake TON"}
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {errorPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-[90%] max-w-md bg-[#1a1a2e] border border-red-500/30 rounded-2xl p-6 shadow-2xl animate-fadeIn">
+            {/* Error Title */}
+            <h2 className="text-red-400 text-lg font-bold mb-2">
+              Transaction Error
+            </h2>
+
+            {/* Message */}
+            <p className="text-gray-300 text-sm">{errorPopup.message}</p>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setErrorPopup(null)}
+              className="mt-4 px-4 py-2 bg-red-500/20 cursor-pointer hover:bg-red-500/40 text-red-300 rounded-lg transition"
+            >
+              Close
+            </button>
+
+            {/* ⏳ Progress Bar */}
+            <div className="absolute bottom-0 left-0 h-1 bg-red-500 animate-progress" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

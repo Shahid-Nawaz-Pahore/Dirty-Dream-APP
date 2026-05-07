@@ -1,10 +1,35 @@
 @import "tailwindcss";
 @layer utilities {
   .textoutline-light {
-    text-shadow:
-      1px 1px 0 rgba(0, 0, 0, 1),
-      -1px 1px 0 rgba(0, 0, 0, 1),
-      1px -1px 0 rgba(0, 0, 0, 1),
-      -1px -1px 0 rgba(0, 0, 0, 1);
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 1), -1px 1px 0 rgba(0, 0, 0, 1),
+      1px -1px 0 rgba(0, 0, 0, 1), -1px -1px 0 rgba(0, 0, 0, 1);
   }
+}
+
+@keyframes progressBar {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.animate-progress {
+  animation: progressBar 10s linear forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
 }

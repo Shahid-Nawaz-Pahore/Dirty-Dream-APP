@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { PiWalletFill } from "react-icons/pi";
 import { useTonConnectUI } from "@tonconnect/ui-react";
-const Nav = ({ displayAddress, balance, ktonBalance, network, onDisconnect }) => {
-const [tonConnectUI] = useTonConnectUI();
-const [showDropdown, setShowDropdown] = useState(false);
-const [copied, setCopied] = useState(false);
+const Nav = ({
+  displayAddress,
+  balance,
+  ktonBalance,
+  network,
+  onDisconnect,
+}) => {
+  const [tonConnectUI] = useTonConnectUI();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleConnect = async () => {
@@ -69,7 +75,10 @@ const [copied, setCopied] = useState(false);
       />
 
       {/* Wallet button */}
-      <div onClick={handleConnect} className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition">
+      <div
+        onClick={handleConnect}
+        className="bg-gradient-to-r from-violet-600 to-blue-500 relative flex gap-2 justify-center items-center rounded-lg hover:scale-105 transform duration-500 border border-violet-400/30 h-10 px-3 cursor-pointer active:scale-95 transition"
+      >
         <PiWalletFill className="text-white w-6 h-6" />
 
         {!tonConnectUI.connected ? (
@@ -117,7 +126,9 @@ const [copied, setCopied] = useState(false);
                   {/* Avatar */}
                   <div
                     className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm text-white"
-                    style={{ background: "linear-gradient(135deg, #7c3aed, #2563eb)" }}
+                    style={{
+                      background: "linear-gradient(135deg, #7c3aed, #2563eb)",
+                    }}
                   >
                     W
                   </div>
@@ -147,12 +158,37 @@ const [copied, setCopied] = useState(false);
                         }}
                       >
                         {copied ? (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         ) : (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect
+                              x="9"
+                              y="9"
+                              width="13"
+                              height="13"
+                              rx="2"
+                              ry="2"
+                            />
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                           </svg>
                         )}
@@ -163,7 +199,10 @@ const [copied, setCopied] = useState(false);
                   {/* Online dot */}
                   <div
                     className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ background: "#34d399", boxShadow: "0 0 6px #34d399" }}
+                    style={{
+                      background: "#34d399",
+                      boxShadow: "0 0 6px #34d399",
+                    }}
                   />
                 </div>
 
@@ -195,10 +234,15 @@ const [copied, setCopied] = useState(false);
                           border: "1px solid rgba(139,92,246,0.18)",
                         }}
                       >
-                        <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "rgba(167,139,250,0.65)" }}>
+                        <p
+                          className="text-[10px] uppercase tracking-wider mb-1"
+                          style={{ color: "rgba(167,139,250,0.65)" }}
+                        >
                           TON
                         </p>
-                        <p className="text-white font-bold text-sm">{balance}</p>
+                        <p className="text-white font-bold text-sm">
+                          {balance}
+                        </p>
                       </div>
                     )}
                     {ktonBalance && (
@@ -209,15 +253,22 @@ const [copied, setCopied] = useState(false);
                           border: "1px solid rgba(6,182,212,0.18)",
                         }}
                       >
-                        <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "rgba(34,211,238,0.65)" }}>
+                        <p
+                          className="text-[10px] uppercase tracking-wider mb-1"
+                          style={{ color: "rgba(34,211,238,0.65)" }}
+                        >
                           K-TON
                         </p>
-                        <p className="text-white font-bold text-sm">{ktonBalance}</p>
+                        <p className="text-white font-bold text-sm">
+                          {ktonBalance}
+                        </p>
                       </div>
                     )}
                   </div>
 
-                  <div style={{ height: 1, background: "rgba(139,92,246,0.12)" }} />
+                  <div
+                    style={{ height: 1, background: "rgba(139,92,246,0.12)" }}
+                  />
 
                   {/* Disconnect */}
                   <button
@@ -231,16 +282,27 @@ const [copied, setCopied] = useState(false);
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = "rgba(239,68,68,0.2)";
-                      e.currentTarget.style.borderColor = "rgba(239,68,68,0.45)";
+                      e.currentTarget.style.borderColor =
+                        "rgba(239,68,68,0.45)";
                       e.currentTarget.style.color = "white";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "rgba(239,68,68,0.1)";
-                      e.currentTarget.style.borderColor = "rgba(239,68,68,0.25)";
+                      e.currentTarget.style.borderColor =
+                        "rgba(239,68,68,0.25)";
                       e.currentTarget.style.color = "#fca5a5";
                     }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                       <polyline points="16 17 21 12 16 7" />
                       <line x1="21" y1="12" x2="9" y2="12" />
